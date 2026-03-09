@@ -461,6 +461,10 @@ export class LiveExecutor {
       order = await this.client.marketSell(signal.symbol, qty);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      // -2019: Margin is insufficient — treat as skipped (not enough free margin, not an error)
+      if (msg.includes("-2019") || msg.toLowerCase().includes("margin is insufficient")) {
+        return { trade: null, skipped: `Insufficient margin to short ${signal.symbol} (free margin too low)`, stopLossTriggered: false, stopLossTrade: null, account };
+      }
       throw new Error(`[LiveExecutor] Short ${signal.symbol} failed: ${msg}`, { cause: err });
     }
 

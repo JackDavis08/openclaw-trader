@@ -19,11 +19,11 @@ const SIGNAL_CHECKERS: Record<string, SignalChecker> = {
     ind.prevMaShort >= ind.prevMaLong &&
     ind.maShort < ind.maLong,
 
-  /** MA short > long (bullish trend) */
-  ma_bullish: (ind) => ind.maShort > ind.maLong,
+  /** MA short > long (bullish trend) — minimum 0.1% gap to filter noise */
+  ma_bullish: (ind) => ind.maShort > ind.maLong && (ind.maShort - ind.maLong) / ind.maLong >= 0.001,
 
-  /** MA short < long (bearish trend) */
-  ma_bearish: (ind) => ind.maShort < ind.maLong,
+  /** MA short < long (bearish trend) — minimum 0.1% gap to filter noise */
+  ma_bearish: (ind) => ind.maShort < ind.maLong && (ind.maLong - ind.maShort) / ind.maLong >= 0.001,
 
   // ── RSI ─────────────────────────────────────────
   /** RSI oversold (RSI < oversold threshold) */

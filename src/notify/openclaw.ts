@@ -79,12 +79,12 @@ export function notifySignal(signal: Signal): void {
   if (!shouldSendSignal(signal.symbol, signal.type)) return;
   markSignalSent(signal.symbol, signal.type);
 
-  const emoji = signal.type === "buy" ? "🟢" : "🔴";
-  const action = signal.type === "buy" ? "Buy Signal" : "Sell Signal";
+  const emoji = signal.type === "buy" ? "🟢" : signal.type === "short" ? "🔴" : signal.type === "sell" ? "🟡" : "🔵";
+  const action = signal.type === "buy" ? "开多 Buy" : signal.type === "short" ? "开空 Short" : signal.type === "sell" ? "平多 Sell" : "平空 Cover";
   const { maShort, maLong, rsi } = signal.indicators;
 
   const msg = [
-    `${emoji} **[Trade Signal] ${signal.symbol} ${action}**`,
+    `${emoji} **[信号] ${signal.symbol} ${action}**`,
     ``,
     `💰 Current Price: ${formatPrice(signal.price)}`,
     `📊 Indicators:`,

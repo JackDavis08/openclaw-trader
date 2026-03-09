@@ -13,7 +13,7 @@ scenarios:
 
   - id: "conservative-spot"
     name: "保守 × 现货"
-    enabled: false              # 无历史数据，暂停
+    enabled: true               # 2026-03-09 开启积累数据
     strategy_id: "conservative"
     # F4 Strategy Plugin 示例（在策略 YAML 中设置，不在 scenario 级别设置）：
     # 在 config/strategies/conservative.yaml 中添加：
@@ -32,7 +32,7 @@ scenarios:
 
   - id: "conservative-futures-3x"
     name: "保守 × 合约 3x"
-    enabled: false              # 无历史数据，暂停
+    enabled: true               # 2026-03-09 开启积累数据
     strategy_id: "conservative"
     initial_usdt: 10000
     fee_rate: 0.0004
@@ -80,7 +80,7 @@ scenarios:
 
   - id: "aggressive-futures-3x"
     name: "激进 × 合约 3x"
-    enabled: false              # Phase A: 精简，只保留 3 核心场景
+    enabled: true               # 2026-03-09 开启积累数据
     strategy_id: "aggressive"
     initial_usdt: 10000
     fee_rate: 0.0004
@@ -113,7 +113,7 @@ scenarios:
 
   - id: "trend-spot"
     name: "趋势 × 现货"
-    enabled: false              # 无历史数据，暂停
+    enabled: true               # 2026-03-09 开启积累数据
     strategy_id: "trend"
     initial_usdt: 10000
     fee_rate: 0.001
@@ -127,7 +127,7 @@ scenarios:
 
   - id: "trend-futures-5x"
     name: "趋势 × 合约 5x"
-    enabled: false              # 5x 杠杆风险较大，默认关闭
+    enabled: true               # 2026-03-09 开启积累数据
     strategy_id: "trend"
     initial_usdt: 10000
     fee_rate: 0.0004
@@ -174,7 +174,7 @@ scenarios:
 
   - id: "rsi-margin-2x"
     name: "RSI均值回归 × 杠杆2x"
-    enabled: false              # Phase A: 精简
+    enabled: true               # 2026-03-09 开启积累数据
     strategy_id: "rsi-pure"
     initial_usdt: 10000
     fee_rate: 0.001
@@ -241,7 +241,7 @@ scenarios:
   # ─── Futures Testnet 空头场景 ────────────────────────────────
   - id: futures-short-test
     name: "Futures Testnet 空头测试"
-    enabled: false              # Phase A: 精简
+    enabled: true               # 2026-03-09 开启积累数据
     strategy_id: "short-trend"   # config/strategies/short-trend.yaml
     initial_usdt: 5000
     fee_rate: 0.0004             # Futures maker fee 0.02%, taker 0.04%
@@ -307,7 +307,7 @@ scenarios:
   # ══════════════════════════════════════════
   - id: "dca-spot"
     name: "DCA 分批建仓 × 现货"
-    enabled: false              # 手动启用
+    enabled: true               # 2026-03-09 开启积累数据（当前 FGI=8 极度恐惧，适合 DCA）
     strategy_id: "conservative" # 用保守策略的信号触发入场
     initial_usdt: 10000
     fee_rate: 0.001

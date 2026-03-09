@@ -241,7 +241,7 @@ scenarios:
   # ─── Futures Testnet 空头场景 ────────────────────────────────
   - id: futures-short-test
     name: "Futures Testnet 空头测试"
-    enabled: true               # 2026-03-09 开启积累数据
+    enabled: false              # 与 futures-long-short 共用同一 testnet 账户，保证金冲突，暂停
     strategy_id: "short-trend"   # config/strategies/short-trend.yaml
     initial_usdt: 5000
     fee_rate: 0.0004             # Futures maker fee 0.02%, taker 0.04%

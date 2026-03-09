@@ -400,7 +400,11 @@ async function processSymbol(
     const adjustedCfg = { ...cfg, risk: { ...effectiveRisk, position_ratio: effectiveRatio } };
     const liveExecutor = createLiveExecutor(adjustedCfg);
 
-    if (cfg.notify.on_signal) notifySignal(signal);
+    // buy/short: notify immediately (new entry signal)
+    // sell/cover: notify only if position exists (avoid false alerts when nothing to close)
+    if (cfg.notify.on_signal && (signal.type === "buy" || signal.type === "short")) {
+      notifySignal(signal);
+    }
 
     if (signal.type === "buy") {
       const result = await liveExecutor.handleBuy(signal);
@@ -420,10 +424,11 @@ async function processSymbol(
       }
     }
   } else if (signal.type === "sell") {
-    // Close long
+    // Close long — only notify if position actually exists
     const account = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
     const sigHistId = account.positions[symbol]?.signalHistoryId;
     if (account.positions[symbol]) {
+      if (cfg.notify.on_signal) notifySignal(signal);
       const liveExecutor = createLiveExecutor(cfg);
       const result = await liveExecutor.handleSell(symbol, signal.price, signal.reason.join(", "));
       if (result.trade) {
@@ -432,12 +437,15 @@ async function processSymbol(
           try { closeSignal(sigHistId, result.trade.price, "signal", result.trade.pnl); } catch { /* skip */ }
         }
       }
+    } else {
+      log.info(`${label} ${symbol}: Sell signal skipped — no open position`);
     }
   } else if (signal.type === "cover") {
-    // Close short
+    // Close short — only notify if position actually exists
     const account = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
     const sigHistId = account.positions[symbol]?.signalHistoryId;
     if (account.positions[symbol]) {
+      if (cfg.notify.on_signal) notifySignal(signal);
       const liveExecutor = createLiveExecutor(cfg);
       const result = await liveExecutor.handleCover(symbol, signal.price, signal.reason.join(", "));
       if (result.trade) {
@@ -446,6 +454,8 @@ async function processSymbol(
           try { closeSignal(sigHistId, result.trade.price, "signal", result.trade.pnl); } catch { /* skip */ }
         }
       }
+    } else {
+      log.info(`${label} ${symbol}: Cover signal skipped — no open position`);
     }
   }
 }

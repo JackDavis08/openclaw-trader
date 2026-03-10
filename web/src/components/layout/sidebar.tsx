@@ -13,6 +13,7 @@ import {
   FileText,
   Layers,
   Settings,
+  FlaskConical,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -34,6 +35,7 @@ const navItems: NavItem[] = [
   { label: "Reports", href: "/reports", icon: FileText },
   { label: "Strategies", href: "/strategies", icon: Layers },
   { label: "Config", href: "/config", icon: Settings },
+  { label: "Backtest", href: "/backtest", icon: FlaskConical },
 ];
 
 export function Sidebar() {

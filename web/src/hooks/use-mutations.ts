@@ -14,6 +14,8 @@ import type {
   ScenarioToggleRequest,
   ScenarioToggleResponse,
   ConfigWriteResponse,
+  BacktestRequest,
+  BacktestResponse,
 } from "@shared/web/api-types";
 
 export function useClosePosition() {
@@ -82,6 +84,16 @@ export function useSaveConfig() {
       void qc.invalidateQueries({ queryKey: ["config-raw"] });
       void qc.invalidateQueries({ queryKey: ["strategies"] });
       void qc.invalidateQueries({ queryKey: ["scenarios"] });
+    },
+  });
+}
+
+export function useRunBacktest() {
+  const qc = useQueryClient();
+  return useMutation<BacktestResponse, Error, BacktestRequest>({
+    mutationFn: (body) => api.post("/api/backtest/run", body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["backtest-results"] });
     },
   });
 }

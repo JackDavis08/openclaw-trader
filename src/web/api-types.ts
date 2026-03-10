@@ -88,36 +88,90 @@ export interface ConfigUpdateRequest {
 // ─────────────────────────────────────────────────────
 
 export interface BacktestRequest {
-  strategy: string;
+  strategy?: string;
   days: number;
-  timeframe: string;
-  symbols: string[];
-  initialUsdt: number;
+  timeframe?: string;
+  symbols?: string[];
+  initialUsdt?: number;
   spreadBps?: number;
+  signalToNextOpen?: boolean;
+}
+
+export interface BacktestTradeItem {
+  symbol: string;
+  side: string;
+  entryPrice: number;
+  exitPrice: number;
+  pnl: number;
+  pnlPercent: number;
+  entryTime: number;
+  exitTime: number;
+  exitReason: string;
+}
+
+export interface BacktestSymbolStats {
+  trades: number;
+  wins: number;
+  losses: number;
+  pnl: number;
+  winRate: number;
 }
 
 export interface BacktestResponse {
   id: string;
+  config: {
+    strategy: string;
+    symbols: string[];
+    timeframe: string;
+    startDate: string;
+    endDate: string;
+    days: number;
+    initialUsdt: number;
+    spreadBps?: number;
+    signalToNextOpen: boolean;
+  };
+  metrics: {
+    totalTrades: number;
+    wins: number;
+    losses: number;
+    winRate: number;
+    totalReturn: number;
+    totalReturnPercent: number;
+    maxDrawdown: number;
+    sharpeRatio: number;
+    sortinoRatio: number;
+    calmarRatio: number;
+    profitFactor: number;
+    avgWinPercent: number;
+    avgLossPercent: number;
+    winLossRatio: number;
+    avgHoldingHours: number;
+    bestTradePct: number;
+    worstTradePct: number;
+    stopLossCount: number;
+    takeProfitCount: number;
+    trailingStopCount: number;
+    signalExitCount: number;
+    endOfDataCount: number;
+    benchmarkReturn?: number;
+    alpha?: number;
+  };
+  equityCurve: { time: number; equity: number }[];
+  trades: BacktestTradeItem[];
+  perSymbol: Record<string, BacktestSymbolStats>;
+}
+
+export interface BacktestResultSummary {
+  id: string;
   strategy: string;
-  startDate: string;
-  endDate: string;
-  totalReturn: number;
+  days: number;
+  timeframe: string;
   totalReturnPercent: number;
   sharpeRatio: number;
   maxDrawdown: number;
-  winRate: number;
   totalTrades: number;
-  equityCurve: { timestamp: number; equity: number }[];
-  trades: {
-    symbol: string;
-    side: string;
-    entryPrice: number;
-    exitPrice: number;
-    pnl: number;
-    pnlPercent: number;
-    entryTime: number;
-    exitTime: number;
-  }[];
+  winRate: number;
+  createdAt: number;
 }
 
 // ─────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
-import type { DashboardData, PriceMap, PerfData, HealthStatus, LogResponse, ScenarioInfo, HealthSnapshot, WeeklyReportScenario, KillSwitchStatus, StrategyListItem, ConfigRawResponse } from "@shared/web/api-types";
+import type { DashboardData, PriceMap, PerfData, HealthStatus, LogResponse, ScenarioInfo, HealthSnapshot, WeeklyReportScenario, KillSwitchStatus, StrategyListItem, ConfigRawResponse, BacktestResultSummary, BacktestResponse } from "@shared/web/api-types";
 
 export function useDashboardData() {
   return useQuery<DashboardData>({
@@ -87,5 +87,20 @@ export function useConfigRaw(file: string | null) {
     queryKey: ["config-raw", file],
     queryFn: () => api.get(`/api/config/raw/${file}`),
     enabled: !!file,
+  });
+}
+
+export function useBacktestResults() {
+  return useQuery<BacktestResultSummary[]>({
+    queryKey: ["backtest-results"],
+    queryFn: () => api.get("/api/backtest/results"),
+  });
+}
+
+export function useBacktestResult(id: string | null) {
+  return useQuery<BacktestResponse>({
+    queryKey: ["backtest-result", id],
+    queryFn: () => api.get(`/api/backtest/results/${id}`),
+    enabled: !!id,
   });
 }

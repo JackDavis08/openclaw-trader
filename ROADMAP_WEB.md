@@ -40,15 +40,17 @@
 - [x] **Manual Trade page** — order form, live price preview, confirmation dialog
 - [x] Health page: kill switch card with activate/deactivate toggle
 
-## Phase 4 — Strategy & Config Management ← Next
+## Phase 4 — Strategy & Config Management ✅
 
-- [ ] `GET /api/strategies` — list strategy profiles + plugin registry
-- [ ] `GET /PUT /api/config/raw/:file` — read/write YAML with validation + backup
-- [ ] `PUT /api/scenarios/:id/toggle` — enable/disable paper scenario
-- [ ] **Strategies page** — strategy cards, scenario toggles
-- [ ] **Configuration page** — tab-based YAML editor, form view, diff preview
+- [x] `GET /api/strategies` — list strategy profiles + linked scenarios + plugin info
+- [x] `GET /PUT /api/config/raw/:file` — read/write YAML with validation + `.bak` backup
+- [x] `GET /PUT /api/config/raw/strategies/:file` — read/write strategy profile YAML
+- [x] `PUT /api/scenarios/:id/toggle` — line-by-line toggle preserving YAML comments
+- [x] **Strategies page** — responsive card grid, plugin badges, scenario Switch toggles
+- [x] **Config page** — 3 tabs (Global Strategy / Paper Scenarios / Strategy Profiles), monospace YAML editor, Save with confirmation dialog, Revert, validation errors
+- [x] Navigation: Strategies + Config added to sidebar & topbar
 
-## Phase 5 — Backtest UI
+## Phase 5 — Backtest UI ← Next
 
 - [ ] `POST /api/backtest/run` — invoke runBacktest() synchronously
 - [ ] `GET /api/backtest/results` — list saved results

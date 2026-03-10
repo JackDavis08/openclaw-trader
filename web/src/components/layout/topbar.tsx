@@ -13,6 +13,7 @@ import {
   FileText,
   Layers,
   Settings,
+  FlaskConical,
   Menu,
 } from "lucide-react";
 import { ConnectionBadge } from "./connection-status";
@@ -30,6 +31,7 @@ const mobileNav = [
   { label: "Reports", href: "/reports", icon: FileText },
   { label: "Strategies", href: "/strategies", icon: Layers },
   { label: "Config", href: "/config", icon: Settings },
+  { label: "Backtest", href: "/backtest", icon: FlaskConical },
 ];
 
 const titles: Record<string, string> = {
@@ -43,6 +45,7 @@ const titles: Record<string, string> = {
   "/reports": "Reports",
   "/strategies": "Strategies",
   "/config": "Config",
+  "/backtest": "Backtest",
 };
 
 export function Topbar() {

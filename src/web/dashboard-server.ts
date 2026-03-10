@@ -21,6 +21,9 @@
  *   PUT  /api/config/raw/:file         → Validate + backup + write config YAML
  *   PUT  /api/config/raw/strategies/:f → Validate + backup + write strategy YAML
  *   PUT  /api/scenarios/:id/toggle     → Toggle scenario enabled/disabled in paper.yaml
+ *   POST /api/backtest/run             → Run backtest (fetch klines + execute + save)
+ *   GET  /api/backtest/results         → List saved backtest result summaries
+ *   GET  /api/backtest/results/:id     → Read a single saved backtest result
  */
 
 import http from "http";
@@ -31,14 +34,19 @@ import { fileURLToPath } from "url";
 import { createLogger } from "../logger.js";
 import { loadAccount, saveAccount, paperBuy, paperSell, paperOpenShort, paperCoverShort } from "../paper/account.js";
 import { parse } from "yaml";
-import { loadPaperConfig, loadStrategyProfile, listStrategyProfiles } from "../config/loader.js";
+import { loadPaperConfig, loadStrategyConfig, loadStrategyProfile, listStrategyProfiles, mergeRisk, mergeStrategySection } from "../config/loader.js";
 import { listStrategyDetails } from "../strategies/index.js";
+import { fetchHistoricalKlines } from "../backtest/fetcher.js";
+import { runBacktest, type BacktestResult } from "../backtest/runner.js";
+import { saveReport } from "../backtest/report.js";
+import type { Kline, StrategyConfig } from "../types.js";
 import { activateKillSwitch, deactivateKillSwitch, readKillSwitch, isKillSwitchActive } from "../health/kill-switch.js";
 import { getPrice } from "../exchange/binance.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOGS_DIR = path.resolve(__dirname, "../../logs");
 const CONFIG_DIR = path.resolve(__dirname, "../../config");
+const BACKTEST_DIR = path.resolve(__dirname, "../../logs/backtest");
 const log = createLogger("dashboard");
 
 // ─────────────────────────────────────────────────────
@@ -595,6 +603,106 @@ export function getActiveSymbols(): string[] {
   } catch {
     return [];
   }
+}
+
+// ─────────────────────────────────────────────────────
+// Data: Backtest helpers
+// ─────────────────────────────────────────────────────
+
+function buildBacktestConfig(
+  strategyId: string | undefined,
+  overrides: { timeframe?: string; symbols?: string[] },
+): StrategyConfig {
+  const base = loadStrategyConfig();
+  let cfg = { ...base };
+  if (strategyId) {
+    const profile = loadStrategyProfile(strategyId);
+    cfg = {
+      ...cfg,
+      symbols: overrides.symbols ?? profile.symbols ?? cfg.symbols,
+      timeframe: (overrides.timeframe ?? profile.timeframe ?? cfg.timeframe) as StrategyConfig["timeframe"],
+      strategy: { ...mergeStrategySection(cfg.strategy, profile.strategy), name: profile.name },
+      signals: {
+        buy: profile.signals?.buy ?? cfg.signals.buy,
+        sell: profile.signals?.sell ?? cfg.signals.sell,
+        ...(profile.signals?.short !== undefined ? { short: profile.signals.short } : {}),
+        ...(profile.signals?.cover !== undefined ? { cover: profile.signals.cover } : {}),
+      },
+      risk: mergeRisk(cfg.risk, profile.risk),
+      ...(profile.trend_timeframe !== undefined
+        ? { trend_timeframe: profile.trend_timeframe }
+        : base.trend_timeframe !== undefined
+          ? { trend_timeframe: base.trend_timeframe }
+          : {}),
+    };
+  } else {
+    cfg = {
+      ...cfg,
+      symbols: overrides.symbols ?? cfg.symbols,
+      timeframe: (overrides.timeframe ?? cfg.timeframe) as StrategyConfig["timeframe"],
+    };
+  }
+  return cfg;
+}
+
+function formatBacktestResponse(result: BacktestResult, id: string) {
+  const { metrics, trades, perSymbol, config } = result;
+  const closedTrades = trades
+    .filter((t) => t.side === "sell" || t.side === "cover")
+    .map((t) => ({
+      symbol: t.symbol,
+      side: t.side,
+      entryPrice: t.entryPrice,
+      exitPrice: t.exitPrice,
+      pnl: t.pnl,
+      pnlPercent: t.pnlPercent * 100,
+      entryTime: t.entryTime,
+      exitTime: t.exitTime,
+      exitReason: t.exitReason,
+    }));
+
+  // Downsample equity curve (max ~200 points for frontend)
+  const curve = metrics.equityCurve;
+  const step = Math.max(1, Math.floor(curve.length / 200));
+  const sampledCurve = curve.filter((_, i) => i % step === 0);
+
+  return {
+    id,
+    config,
+    metrics: {
+      totalTrades: metrics.totalTrades,
+      wins: metrics.wins,
+      losses: metrics.losses,
+      winRate: metrics.winRate,
+      totalReturn: metrics.totalReturn,
+      totalReturnPercent: metrics.totalReturnPercent,
+      maxDrawdown: metrics.maxDrawdown,
+      sharpeRatio: metrics.sharpeRatio,
+      sortinoRatio: metrics.sortinoRatio,
+      calmarRatio: metrics.calmarRatio,
+      profitFactor: metrics.profitFactor,
+      avgWinPercent: metrics.avgWinPercent,
+      avgLossPercent: metrics.avgLossPercent,
+      winLossRatio: metrics.winLossRatio,
+      avgHoldingHours: metrics.avgHoldingHours,
+      bestTradePct: metrics.bestTradePct,
+      worstTradePct: metrics.worstTradePct,
+      stopLossCount: metrics.stopLossCount,
+      takeProfitCount: metrics.takeProfitCount,
+      trailingStopCount: metrics.trailingStopCount,
+      signalExitCount: metrics.signalExitCount,
+      endOfDataCount: metrics.endOfDataCount,
+      ...(metrics.benchmarkReturn !== undefined ? { benchmarkReturn: metrics.benchmarkReturn } : {}),
+      ...(metrics.alpha !== undefined ? { alpha: metrics.alpha } : {}),
+    },
+    equityCurve: sampledCurve,
+    trades: closedTrades,
+    perSymbol: Object.fromEntries(
+      Object.entries(perSymbol).map(([sym, s]) => [sym, {
+        trades: s.trades, wins: s.wins, losses: s.losses, pnl: s.pnl, winRate: s.winRate,
+      }]),
+    ),
+  };
 }
 
 // ─────────────────────────────────────────────────────
@@ -1755,6 +1863,150 @@ export function startDashboardServer(port = 8080): void {
         fs.copyFileSync(paperPath, backupPath);
         fs.writeFileSync(paperPath, lines.join("\n"), "utf-8");
         sendJson(res, { success: true, id: scenarioId, enabled: body.enabled });
+      } catch (e) {
+        sendError(res, e instanceof Error ? e.message : String(e));
+      }
+      return;
+    }
+
+    // ── Backtest: run ──
+    if (pathname === "/api/backtest/run" && method === "POST") {
+      try {
+        const body = await parseBody<{
+          strategy?: string;
+          days?: number;
+          timeframe?: string;
+          symbols?: string[];
+          initialUsdt?: number;
+          spreadBps?: number;
+          signalToNextOpen?: boolean;
+        }>(req);
+
+        const days = body.days ?? 90;
+        const initialUsdt = body.initialUsdt ?? 1000;
+        const spreadBps = body.spreadBps ?? 0;
+        const signalToNextOpen = body.signalToNextOpen ?? false;
+
+        const cfg = buildBacktestConfig(body.strategy, {
+          timeframe: body.timeframe,
+          symbols: body.symbols,
+        });
+
+        const endMs = Date.now();
+        const startMs = endMs - days * 86_400_000;
+
+        // Fetch klines
+        const klinesBySymbol: Record<string, Kline[]> = {};
+        for (const symbol of cfg.symbols) {
+          klinesBySymbol[symbol] = await fetchHistoricalKlines(symbol, cfg.timeframe, startMs, endMs);
+        }
+
+        // Optional MTF trend klines
+        let trendKlinesBySymbol: Record<string, Kline[]> | undefined;
+        if (cfg.trend_timeframe) {
+          trendKlinesBySymbol = {};
+          for (const symbol of cfg.symbols) {
+            trendKlinesBySymbol[symbol] = await fetchHistoricalKlines(
+              symbol, cfg.trend_timeframe, startMs, endMs,
+            );
+          }
+        }
+
+        const result = runBacktest(klinesBySymbol, cfg, {
+          initialUsdt,
+          feeRate: 0.001,
+          slippagePercent: 0.05,
+          spreadBps,
+          signalToNextOpen,
+        }, trendKlinesBySymbol);
+
+        // Save report
+        const savedPath = saveReport(result, body.strategy);
+        const id = path.basename(savedPath, ".json");
+
+        sendJson(res, formatBacktestResponse(result, id));
+      } catch (e) {
+        sendError(res, e instanceof Error ? e.message : String(e));
+      }
+      return;
+    }
+
+    // ── Backtest: list results ──
+    if (pathname === "/api/backtest/results" && method === "GET") {
+      try {
+        if (!fs.existsSync(BACKTEST_DIR)) {
+          sendJson(res, []);
+          return;
+        }
+        const files = fs.readdirSync(BACKTEST_DIR)
+          .filter((f) => f.endsWith(".json"))
+          .sort()
+          .reverse();
+
+        const summaries = files.map((f) => {
+          const filePath = path.join(BACKTEST_DIR, f);
+          const stat = fs.statSync(filePath);
+          try {
+            const raw = JSON.parse(fs.readFileSync(filePath, "utf-8")) as {
+              config?: { strategy?: string; days?: number; timeframe?: string };
+              metrics?: {
+                totalReturnPercent?: number;
+                sharpeRatio?: number;
+                maxDrawdown?: number;
+                totalTrades?: number;
+                winRate?: number;
+              };
+            };
+            return {
+              id: f.replace(".json", ""),
+              strategy: raw.config?.strategy ?? "unknown",
+              days: raw.config?.days ?? 0,
+              timeframe: raw.config?.timeframe ?? "",
+              totalReturnPercent: raw.metrics?.totalReturnPercent ?? 0,
+              sharpeRatio: raw.metrics?.sharpeRatio ?? 0,
+              maxDrawdown: raw.metrics?.maxDrawdown ?? 0,
+              totalTrades: raw.metrics?.totalTrades ?? 0,
+              winRate: raw.metrics?.winRate ?? 0,
+              createdAt: stat.mtimeMs,
+            };
+          } catch {
+            return {
+              id: f.replace(".json", ""),
+              strategy: "unknown",
+              days: 0,
+              timeframe: "",
+              totalReturnPercent: 0,
+              sharpeRatio: 0,
+              maxDrawdown: 0,
+              totalTrades: 0,
+              winRate: 0,
+              createdAt: stat.mtimeMs,
+            };
+          }
+        });
+        sendJson(res, summaries);
+      } catch (e) {
+        sendError(res, e instanceof Error ? e.message : String(e));
+      }
+      return;
+    }
+
+    // ── Backtest: get single result ──
+    const btResultMatch = matchRoute(pathname, "/api/backtest/results/:id");
+    if (btResultMatch && method === "GET") {
+      try {
+        const id = btResultMatch.id!;
+        if (id.includes("..") || id.includes("/")) {
+          sendError(res, "Invalid result id", 400);
+          return;
+        }
+        const filePath = path.join(BACKTEST_DIR, `${id}.json`);
+        if (!fs.existsSync(filePath)) {
+          sendError(res, `Result not found: ${id}`, 404);
+          return;
+        }
+        const raw = JSON.parse(fs.readFileSync(filePath, "utf-8")) as BacktestResult;
+        sendJson(res, formatBacktestResponse(raw, id));
       } catch (e) {
         sendError(res, e instanceof Error ? e.message : String(e));
       }

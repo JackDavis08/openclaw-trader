@@ -113,9 +113,29 @@ export interface DayPerf {
   trades: number;
 }
 
+export interface RiskMetrics {
+  sharpeRatio: number;
+  sortinoRatio: number;
+  maxDrawdownPct: number;
+  calmarRatio: number;
+  profitFactor: number;
+  winRate: number;
+  avgWinPercent: number;
+  avgLossPercent: number;
+  winLossRatio: number;
+  expectancy: number;
+  totalReturn: number;
+  totalReturnPercent: number;
+  totalTrades: number;
+  avgHoldingHours: number;
+  bestTradePct: number;
+  worstTradePct: number;
+}
+
 export interface PerfData {
   bySymbol: SymbolPerf[];
   byDay: DayPerf[];
+  riskMetrics: RiskMetrics | null;
 }
 
 // ─────────────────────────────────────────────────────
@@ -346,7 +366,93 @@ export function buildPerfData(): PerfData {
   }
   const byDay = Array.from(dayMap.values()).sort((a, b) => a.date.localeCompare(b.date));
 
-  return { bySymbol, byDay };
+  // ── Risk Metrics ──
+  let riskMetrics: RiskMetrics | null = null;
+  if (closed.length >= 3) {
+    const pnls = closed.map((t) => t.pnl ?? 0);
+    const wins = pnls.filter((p) => p > 0);
+    const losses = pnls.filter((p) => p <= 0);
+    const grossProfit = wins.reduce((s, p) => s + p, 0);
+    const grossLoss = Math.abs(losses.reduce((s, p) => s + p, 0));
+    const totalPnl = pnls.reduce((s, p) => s + p, 0);
+
+    // Use first scenario's initial capital as basis
+    const initUsdt = scenarios[0]?.initial_usdt ?? 1000;
+    const totalReturnPct = initUsdt > 0 ? (totalPnl / initUsdt) * 100 : 0;
+
+    // Per-trade return rates for Sharpe/Sortino
+    const pnlPcts = closed.map((t) => (t.pnlPercent ?? 0) / 100); // convert from display % back to ratio
+    const meanRet = pnlPcts.length > 0 ? pnlPcts.reduce((s, r) => s + r, 0) / pnlPcts.length : 0;
+    const variance = pnlPcts.reduce((s, r) => s + Math.pow(r - meanRet, 2), 0) / pnlPcts.length;
+    const stdDev = Math.sqrt(variance);
+    const sharpeRatio = stdDev > 0 ? (meanRet / stdDev) * Math.sqrt(pnlPcts.length) : 0;
+
+    const downReturns = pnlPcts.filter((r) => r < 0);
+    const downDev = downReturns.length > 0
+      ? Math.sqrt(downReturns.reduce((s, r) => s + r * r, 0) / downReturns.length)
+      : 0;
+    const sortinoRatio = downDev > 0 ? (meanRet / downDev) * Math.sqrt(pnlPcts.length) : 0;
+
+    // Max drawdown from cumulative equity
+    let equity = initUsdt;
+    let peak = initUsdt;
+    let maxDd = 0;
+    for (const p of pnls) {
+      equity += p;
+      if (equity > peak) peak = equity;
+      const dd = (peak - equity) / peak;
+      if (dd > maxDd) maxDd = dd;
+    }
+    const maxDrawdownPct = maxDd * 100;
+
+    // Calmar: annualized return / max drawdown
+    const firstTs = closed[0]?.timestamp ?? 0;
+    const lastTs = closed[closed.length - 1]?.timestamp ?? 0;
+    const daysSpan = Math.max(1, (lastTs - firstTs) / 86400000);
+    const annualizedReturn = totalReturnPct * (365 / daysSpan);
+    const calmarRatio = maxDrawdownPct > 0 ? annualizedReturn / maxDrawdownPct : 0;
+
+    const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : grossProfit > 0 ? 99 : 0;
+    const avgWin = wins.length > 0 ? grossProfit / wins.length : 0;
+    const avgLoss = losses.length > 0 ? grossLoss / losses.length : 0;
+    const winRate = closed.length > 0 ? wins.length / closed.length : 0;
+    const avgWinPct = wins.length > 0
+      ? closed.filter((t) => (t.pnl ?? 0) > 0).reduce((s, t) => s + Math.abs(t.pnlPercent ?? 0), 0) / wins.length
+      : 0;
+    const avgLossPct = losses.length > 0
+      ? closed.filter((t) => (t.pnl ?? 0) <= 0).reduce((s, t) => s + Math.abs(t.pnlPercent ?? 0), 0) / losses.length
+      : 0;
+    const winLossRatio = avgLoss > 0 ? avgWin / avgLoss : 0;
+    const expectancy = avgWin * winRate - avgLoss * (1 - winRate);
+
+    const pnlPctValues = closed.map((t) => t.pnlPercent ?? 0);
+    const bestTradePct = Math.max(...pnlPctValues);
+    const worstTradePct = Math.min(...pnlPctValues);
+
+    // Avg holding hours (from entry trades matched with closes)
+    const avgHoldingHours = 0; // Simplified: would need entry timestamps
+
+    riskMetrics = {
+      sharpeRatio: parseFloat(sharpeRatio.toFixed(2)),
+      sortinoRatio: parseFloat(sortinoRatio.toFixed(2)),
+      maxDrawdownPct: parseFloat(maxDrawdownPct.toFixed(2)),
+      calmarRatio: parseFloat(calmarRatio.toFixed(2)),
+      profitFactor: parseFloat(profitFactor.toFixed(2)),
+      winRate: parseFloat(winRate.toFixed(4)),
+      avgWinPercent: parseFloat(avgWinPct.toFixed(2)),
+      avgLossPercent: parseFloat(avgLossPct.toFixed(2)),
+      winLossRatio: parseFloat(winLossRatio.toFixed(2)),
+      expectancy: parseFloat(expectancy.toFixed(2)),
+      totalReturn: parseFloat(totalPnl.toFixed(2)),
+      totalReturnPercent: parseFloat(totalReturnPct.toFixed(2)),
+      totalTrades: closed.length,
+      avgHoldingHours,
+      bestTradePct: parseFloat(bestTradePct.toFixed(2)),
+      worstTradePct: parseFloat(worstTradePct.toFixed(2)),
+    };
+  }
+
+  return { bySymbol, byDay, riskMetrics };
 }
 
 // ─────────────────────────────────────────────────────
@@ -1190,8 +1296,8 @@ export function startDashboardServer(port = 8080): void {
         sendJson(res, {}); return;
       }
       fetchBinancePrices(symbols)
-        .then((prices) => sendJson(res, prices))
-        .catch(() => sendJson(res, {}));
+        .then((prices) => { sendJson(res, prices); })
+        .catch(() => { sendJson(res, {}); });
       return;
     }
 
@@ -1239,6 +1345,47 @@ export function startDashboardServer(port = 8080): void {
         memory: process.memoryUsage(),
         version: process.version,
       });
+      return;
+    }
+
+    if (pathname === "/api/health/snapshot") {
+      const snapshotFile = path.join(LOGS_DIR, "health-snapshot.json");
+      try {
+        if (fs.existsSync(snapshotFile)) {
+          const raw = fs.readFileSync(snapshotFile, "utf-8");
+          sendJson(res, JSON.parse(raw));
+        } else {
+          sendJson(res, { checkedAt: null, results: [] });
+        }
+      } catch (e) {
+        sendError(res, e instanceof Error ? e.message : String(e));
+      }
+      return;
+    }
+
+    if (pathname === "/api/reports/weekly") {
+      const reportsDir = path.join(LOGS_DIR, "reports");
+      try {
+        if (!fs.existsSync(reportsDir)) {
+          sendJson(res, { reports: [], date: null });
+          return;
+        }
+        // Find most recent weekly report
+        const files = fs.readdirSync(reportsDir)
+          .filter((f) => f.startsWith("weekly-") && f.endsWith(".json"))
+          .sort()
+          .reverse();
+        if (files.length === 0) {
+          sendJson(res, { reports: [], date: null });
+          return;
+        }
+        const latest = files[0]!;
+        const raw = fs.readFileSync(path.join(reportsDir, latest), "utf-8");
+        const parsed: unknown = JSON.parse(raw);
+        sendJson(res, { reports: parsed, date: latest.replace("weekly-", "").replace(".json", "") });
+      } catch (e) {
+        sendError(res, e instanceof Error ? e.message : String(e));
+      }
       return;
     }
 

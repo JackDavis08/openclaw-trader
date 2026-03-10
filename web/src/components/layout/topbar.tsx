@@ -8,6 +8,8 @@ import {
   History,
   BarChart3,
   Activity,
+  HeartPulse,
+  FileText,
   Menu,
 } from "lucide-react";
 import { ConnectionBadge } from "./connection-status";
@@ -20,6 +22,8 @@ const mobileNav = [
   { label: "Trades", href: "/trades", icon: History },
   { label: "Performance", href: "/performance", icon: BarChart3 },
   { label: "Signals", href: "/signals", icon: Activity },
+  { label: "Health", href: "/health", icon: HeartPulse },
+  { label: "Reports", href: "/reports", icon: FileText },
 ];
 
 const titles: Record<string, string> = {
@@ -28,6 +32,8 @@ const titles: Record<string, string> = {
   "/trades": "Trade History",
   "/performance": "Performance",
   "/signals": "Signals",
+  "/health": "System Health",
+  "/reports": "Reports",
 };
 
 export function Topbar() {

@@ -9,7 +9,7 @@ logs/
 !.secrets/*.json.example
 
 # Generated reports
-reports/
+/reports/
 
 # Agent memory
 memory/

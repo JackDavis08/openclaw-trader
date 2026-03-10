@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
-import type { DashboardData, PriceMap, PerfData, HealthStatus, LogResponse, ScenarioInfo } from "@shared/web/api-types";
+import type { DashboardData, PriceMap, PerfData, HealthStatus, LogResponse, ScenarioInfo, HealthSnapshot, WeeklyReportScenario } from "@shared/web/api-types";
 
 export function useDashboardData() {
   return useQuery<DashboardData>({
@@ -49,5 +49,20 @@ export function useScenarios() {
   return useQuery<ScenarioInfo[]>({
     queryKey: ["scenarios"],
     queryFn: () => api.get("/api/scenarios"),
+  });
+}
+
+export function useHealthSnapshot() {
+  return useQuery<HealthSnapshot>({
+    queryKey: ["health-snapshot"],
+    queryFn: () => api.get("/api/health/snapshot"),
+    refetchInterval: 60_000,
+  });
+}
+
+export function useWeeklyReport() {
+  return useQuery<{ reports: WeeklyReportScenario[]; date: string | null }>({
+    queryKey: ["weekly-report"],
+    queryFn: () => api.get("/api/reports/weekly"),
   });
 }

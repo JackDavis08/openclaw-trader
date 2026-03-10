@@ -128,3 +128,85 @@ export interface LogResponse {
   file: string;
   tail: number;
 }
+
+// ─────────────────────────────────────────────────────
+// Risk Metrics (Phase 2 — extended PerfData)
+// ─────────────────────────────────────────────────────
+
+export interface RiskMetrics {
+  sharpeRatio: number;
+  sortinoRatio: number;
+  maxDrawdownPct: number;
+  calmarRatio: number;
+  profitFactor: number;
+  winRate: number;
+  avgWinPercent: number;
+  avgLossPercent: number;
+  winLossRatio: number;
+  expectancy: number;
+  totalReturn: number;
+  totalReturnPercent: number;
+  totalTrades: number;
+  avgHoldingHours: number;
+  bestTradePct: number;
+  worstTradePct: number;
+}
+
+// ─────────────────────────────────────────────────────
+// Health Snapshot (Phase 2)
+// ─────────────────────────────────────────────────────
+
+export interface HealthSnapshotTask {
+  name: string;
+  status: "ok" | "warn" | "error" | "never";
+  minutesSince: number;
+  message: string;
+  enabled: boolean;
+}
+
+export interface HealthSnapshot {
+  checkedAt: string;
+  results: HealthSnapshotTask[];
+}
+
+// ─────────────────────────────────────────────────────
+// Weekly Report (Phase 2)
+// ─────────────────────────────────────────────────────
+
+export interface WeeklyReportScenario {
+  scenarioId: string;
+  scenarioName: string;
+  strategyName: string;
+  market: string;
+  leverage: string;
+  account: {
+    initialUsdt: number;
+    currentUsdt: number;
+    totalPnl: number;
+    totalPnlPercent: number;
+  };
+  stats: {
+    totalTrades: number;
+    buys: number;
+    sells: number;
+    wins: number;
+    losses: number;
+    winRate: number;
+    totalPnl: number;
+    avgPnl: number;
+    maxProfit: number;
+    maxLoss: number;
+    avgHoldingHours: number;
+    bestSymbol: string;
+    worstSymbol: string;
+    symbolStats: Record<string, { trades: number; pnl: number }>;
+  };
+  metrics: {
+    sharpeRatio: number;
+    sortinoRatio: number;
+    maxDrawdownPct: number;
+    profitFactor: number;
+    winLossRatio: number;
+    expectancy: number;
+  } | null;
+}

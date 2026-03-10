@@ -8,6 +8,8 @@ import {
   History,
   BarChart3,
   Activity,
+  HeartPulse,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -24,6 +26,8 @@ const navItems: NavItem[] = [
   { label: "Trades", href: "/trades", icon: History },
   { label: "Performance", href: "/performance", icon: BarChart3 },
   { label: "Signals", href: "/signals", icon: Activity },
+  { label: "Health", href: "/health", icon: HeartPulse },
+  { label: "Reports", href: "/reports", icon: FileText },
 ];
 
 export function Sidebar() {

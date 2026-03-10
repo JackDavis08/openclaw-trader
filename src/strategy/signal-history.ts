@@ -222,6 +222,52 @@ export function expireOpenSignals(olderThanHours = 72): number {
 }
 
 // ─────────────────────────────────────────────────────
+// Filtered Signal Logging (rejected signals for post-analysis)
+// ─────────────────────────────────────────────────────
+
+const FILTERED_FILE = IS_TEST
+  ? path.resolve(__dirname, "../../logs/filtered-signals-test.jsonl")
+  : path.resolve(__dirname, "../../logs/filtered-signals.jsonl");
+
+export interface FilteredSignalRecord {
+  timestamp: number;
+  symbol: string;
+  type: string;           // signal type (buy / short / sell / cover)
+  price: number;
+  filter: string;         // which filter rejected it (e.g. "regime", "mtf", "sentiment", "rr", "protection")
+  reason: string;         // human-readable reason
+  scenarioId?: string;
+  source?: "paper" | "live";
+}
+
+/**
+ * Log a signal that was rejected by a filter stage.
+ * Written to a separate JSONL file for post-analysis without polluting signal-history.
+ */
+export function logFilteredSignal(params: {
+  symbol: string;
+  type: string;
+  price: number;
+  filter: string;
+  reason: string;
+  scenarioId?: string;
+  source?: "paper" | "live";
+}): void {
+  const record: FilteredSignalRecord = {
+    timestamp: Date.now(),
+    symbol: params.symbol,
+    type: params.type,
+    price: params.price,
+    filter: params.filter,
+    reason: params.reason,
+    ...(params.scenarioId !== undefined && { scenarioId: params.scenarioId }),
+    ...(params.source !== undefined && { source: params.source }),
+  };
+  fs.mkdirSync(path.dirname(FILTERED_FILE), { recursive: true });
+  fs.appendFileSync(FILTERED_FILE, JSON.stringify(record) + "\n", "utf-8");
+}
+
+// ─────────────────────────────────────────────────────
 // Statistical Analysis
 // ─────────────────────────────────────────────────────
 

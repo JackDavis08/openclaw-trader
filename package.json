@@ -39,6 +39,7 @@
     "analysis": "tsx src/scripts/market-analysis.ts",
     "analyze": "tsx src/scripts/analyze-strategy.ts",
     "telegram-bot": "tsx src/scripts/telegram-bot.ts",
+    "telegram-poll": "tsx src/scripts/telegram-bot.ts -- --poll",
     "cmd": "tsx src/scripts/telegram-bot.ts",
     "weekly": "tsx src/scripts/weekly-report.ts",
     "signal-stats": "tsx src/scripts/signal-stats.ts",

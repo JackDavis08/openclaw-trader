@@ -12,12 +12,12 @@
 - [x] **Spot market short signal guard** — Short signals rejected at signal-engine level for spot markets (before notifications)
 - [x] **Regime confidence config** — Exposed as `regime_confidence_threshold` in YAML (default: 60)
 
-## v0.3 — Observability & Dashboard
+## v0.3 — Observability & Dashboard ✅
 
 - [x] **Web dashboard auth** — Basic auth via `DASHBOARD_AUTH=user:pass` env var
-- [ ] **Telegram bot as standalone** — Run `telegram-bot.ts` as a persistent process alongside the monitor
-- [ ] **Filtered signal logging** — Log signals rejected by MTF / sentiment gate with rejection reason for post-analysis
-- [ ] **Real-time equity tracking** — Persist equity snapshots at regular intervals for charting
+- [x] **Telegram bot as standalone** — Long-polling mode via `npm run telegram-poll` (TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID)
+- [x] **Filtered signal logging** — Rejected signals persisted to `logs/filtered-signals.jsonl` with filter name + reason
+- [x] **Real-time equity tracking** — `recordEquitySnapshot()` called from both monitors (rate-limited 1/hour)
 
 ## v0.4 — Strategy & Intelligence
 

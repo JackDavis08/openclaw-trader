@@ -25,6 +25,8 @@ import { checkMtfFilter } from "./strategy/mtf-filter.js";
 import { loadRecentTrades } from "./strategy/recent-trades.js";
 import { readSentimentCache } from "./news/sentiment-cache.js";
 import { processSignal } from "./strategy/signal-engine.js";
+import { logFilteredSignal } from "./strategy/signal-history.js";
+import { recordEquitySnapshot } from "./report/equity-tracker.js";
 import { fetchFundingRatePct } from "./strategy/funding-rate-signal.js";
 import { getBtcDominanceTrend } from "./strategy/btc-dominance.js";
 import { readEmergencyHalt } from "./news/emergency-monitor.js";
@@ -196,6 +198,9 @@ async function scanSymbol(
 
     if (rejected) {
       log.info(`${scenarioPrefix}${symbol}: 🚫 ${rejectionReason ?? "filtered"}`);
+      if (signal.type !== "none") {
+        logFilteredSignal({ symbol, type: signal.type, price: indicators.price, filter: "engine", reason: rejectionReason ?? "filtered", scenarioId: cfg.paper.scenarioId, source: "paper" });
+      }
       return;
     }
 
@@ -215,6 +220,7 @@ async function scanSymbol(
       const emergencyState = readEmergencyHalt();
       if (emergencyState.halt) {
         log.warn(`${scenarioPrefix}${symbol}: ⛔ Emergency halt: ${emergencyState.reason ?? "Breaking high-risk news"}`);
+        logFilteredSignal({ symbol, type: signal.type, price: indicators.price, filter: "emergency", reason: emergencyState.reason ?? "Breaking high-risk news", scenarioId: cfg.paper.scenarioId, source: "paper" });
         return;
       }
     }
@@ -225,6 +231,7 @@ async function scanSymbol(
         const eventRisk = checkEventRisk(loadCalendar());
         if (eventRisk.phase === "during") {
           log.info(`${scenarioPrefix}${symbol}: ⏸ Event window active (${eventRisk.eventName}), pausing entries`);
+          logFilteredSignal({ symbol, type: signal.type, price: indicators.price, filter: "event", reason: `Event window: ${eventRisk.eventName}`, scenarioId: cfg.paper.scenarioId, source: "paper" });
           return;
         }
         // pre / post phase: log only, sentiment gate will further adjust on top of this
@@ -244,6 +251,7 @@ async function scanSymbol(
       }
       if (mtfCheck.filtered) {
         log.info(`${scenarioPrefix}${symbol}: 🚫 ${mtfCheck.reason}`);
+        logFilteredSignal({ symbol, type: signal.type, price: indicators.price, filter: "mtf", reason: mtfCheck.reason ?? "MTF trend filter", scenarioId: cfg.paper.scenarioId, source: "paper" });
         return;
       }
     }
@@ -255,7 +263,10 @@ async function scanSymbol(
     const sentimentCache = readSentimentCache();  // Read LLM sentiment cache from disk
     const gate = evaluateSentimentGate(signal, newsReport, baseForGate, sentimentCache);
     log.info(`${scenarioPrefix}${symbol}: Sentiment gate -> ${gate.action} (${gate.reason})`);
-    if (gate.action === "skip") return;
+    if (gate.action === "skip") {
+      logFilteredSignal({ symbol, type: signal.type, price: indicators.price, filter: "sentiment", reason: gate.reason, scenarioId: cfg.paper.scenarioId, source: "paper" });
+      return;
+    }
 
     if (cfg.mode === "paper") {
       let effectiveRatio = "positionRatio" in gate ? gate.positionRatio : baseForGate;
@@ -525,10 +536,9 @@ async function runScenario(cfg: RuntimeConfig): Promise<void> {
   // P7.1 Portfolio exposure summary log (output when positions exist, aids risk monitoring)
   try {
     const accForExp = loadAccount(cfg.paper.initial_usdt, sid);
+    const posWeights = buildPositionWeights(accForExp, { ...currentPrices });
+    const totalEquity = accForExp.usdt + posWeights.reduce((s, pw) => s + pw.notionalUsdt, 0);
     if (Object.keys(accForExp.positions).length > 0) {
-      const priceMap: Record<string, number> = { ...currentPrices };
-      const posWeights = buildPositionWeights(accForExp, priceMap);
-      const totalEquity = accForExp.usdt + posWeights.reduce((s, pw) => s + pw.notionalUsdt, 0);
       const klinesBySymbol: Record<string, Kline[]> = {};
       for (const sym of cfg.symbols) {
         const kl = provider.get(sym, cfg.timeframe);
@@ -537,6 +547,8 @@ async function runScenario(cfg: RuntimeConfig): Promise<void> {
       const exposure = calcPortfolioExposure(posWeights, totalEquity, klinesBySymbol);
       log.info(`[${sid}] ${formatPortfolioExposure(exposure).replace(/\*\*/g, "")}`);
     }
+    // Record equity snapshot (rate-limited to 1 per hour internally)
+    recordEquitySnapshot(sid, totalEquity, Object.keys(accForExp.positions).length);
   } catch { /* exposure summary failure doesn't affect main flow */ }
 
   saveState(sid, state);

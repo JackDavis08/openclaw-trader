@@ -2,13 +2,19 @@
  * Web Dashboard Server (Freqtrade-style GUI)
  *
  * API Endpoints:
- *   GET /               → HTML SPA (sidebar navigation)
- *   GET /api/data       → Account, positions, trade records, signal history
- *   GET /api/prices     → Binance real-time prices
- *   GET /api/perf       → Performance stats (by symbol / by date)
- *   GET /api/logs       → monitor.log tail lines
- *   GET /api/scenarios  → Scenario list
- *   GET /api/health     → Health check
+ *   GET  /                              → HTML SPA (sidebar navigation)
+ *   GET  /api/data                      → Account, positions, trade records, signal history
+ *   GET  /api/prices                    → Binance real-time prices
+ *   GET  /api/perf                      → Performance stats (by symbol / by date)
+ *   GET  /api/logs                      → monitor.log tail lines
+ *   GET  /api/scenarios                 → Scenario list
+ *   GET  /api/health                    → Health check
+ *   GET  /api/kill-switch               → Kill switch state
+ *   PUT  /api/kill-switch               → Toggle kill switch
+ *   GET  /api/price/:symbol             → Single symbol price lookup
+ *   POST /api/positions/:symbol/close   → Close a position
+ *   PUT  /api/positions/:symbol/stop-loss → Adjust stop loss
+ *   POST /api/manual-trade              → Open a manual trade
  */
 
 import http from "http";
@@ -17,8 +23,10 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createLogger } from "../logger.js";
-import { loadAccount } from "../paper/account.js";
+import { loadAccount, saveAccount, paperBuy, paperSell, paperOpenShort, paperCoverShort } from "../paper/account.js";
 import { loadPaperConfig } from "../config/loader.js";
+import { activateKillSwitch, deactivateKillSwitch, readKillSwitch, isKillSwitchActive } from "../health/kill-switch.js";
+import { getPrice } from "../exchange/binance.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOGS_DIR = path.resolve(__dirname, "../../logs");
@@ -1257,20 +1265,60 @@ function sendError(res: http.ServerResponse, msg: string, status = 500): void {
   sendJson(res, { error: msg }, status);
 }
 
+function parseBody<T>(req: http.IncomingMessage): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    const timer = setTimeout(() => reject(new Error("Body read timeout")), 10_000);
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => {
+      clearTimeout(timer);
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString()) as T);
+      } catch {
+        reject(new Error("Invalid JSON body"));
+      }
+    });
+    req.on("error", (err) => { clearTimeout(timer); reject(err); });
+  });
+}
+
+function matchRoute(pathname: string, pattern: string): Record<string, string> | null {
+  const patternParts = pattern.split("/");
+  const pathParts = pathname.split("/");
+  if (patternParts.length !== pathParts.length) return null;
+  const params: Record<string, string> = {};
+  for (let i = 0; i < patternParts.length; i++) {
+    const pp = patternParts[i]!;
+    const val = pathParts[i]!;
+    if (pp.startsWith(":")) {
+      params[pp.slice(1)] = decodeURIComponent(val);
+    } else if (pp !== val) {
+      return null;
+    }
+  }
+  return params;
+}
+
 export function startDashboardServer(port = 8080): void {
   if (server) {
     log.info("Server is already running");
     return;
   }
 
-  server = http.createServer((req, res) => {
+  async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const url = new URL(req.url ?? "/", `http://localhost:${port}`);
     const pathname = url.pathname;
+    const method = req.method ?? "GET";
 
+    // CORS headers
     res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-    if (req.method !== "GET") {
-      res.writeHead(405); res.end("Method Not Allowed"); return;
+    if (method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
     }
 
     // ── Routes ──
@@ -1389,7 +1437,165 @@ export function startDashboardServer(port = 8080): void {
       return;
     }
 
+    // ── Kill Switch ──
+    if (pathname === "/api/kill-switch" && method === "GET") {
+      sendJson(res, readKillSwitch());
+      return;
+    }
+
+    if (pathname === "/api/kill-switch" && method === "PUT") {
+      const body = await parseBody<{ active: boolean; reason?: string; autoResumeMinutes?: number }>(req);
+      if (body.active) {
+        const autoMs = body.autoResumeMinutes ? body.autoResumeMinutes * 60_000 : undefined;
+        activateKillSwitch(body.reason ?? "Manual activation via dashboard", autoMs);
+      } else {
+        deactivateKillSwitch();
+      }
+      sendJson(res, readKillSwitch());
+      return;
+    }
+
+    // ── Price lookup ──
+    const priceMatch = matchRoute(pathname, "/api/price/:symbol");
+    if (priceMatch && method === "GET") {
+      try {
+        const price = await getPrice(priceMatch.symbol!);
+        sendJson(res, { symbol: priceMatch.symbol, price });
+      } catch (e) {
+        sendError(res, e instanceof Error ? e.message : String(e), 400);
+      }
+      return;
+    }
+
+    // ── Close position ──
+    const closeMatch = matchRoute(pathname, "/api/positions/:symbol/close");
+    if (closeMatch && method === "POST") {
+      try {
+        const body = await parseBody<{ scenarioId: string }>(req);
+        const { scenarioId } = body;
+        const symbol = closeMatch.symbol!;
+        const account = loadAccount(undefined, scenarioId);
+        const pos = account.positions[symbol];
+        if (!pos) {
+          sendError(res, `No position found for ${symbol} in ${scenarioId}`, 404);
+          return;
+        }
+        const price = await getPrice(symbol);
+        let trade;
+        if (pos.side === "short") {
+          trade = paperCoverShort(account, symbol, price, "manual close via dashboard");
+        } else {
+          trade = paperSell(account, symbol, price, "manual close via dashboard");
+        }
+        if (!trade) {
+          sendError(res, "Close failed — trade returned null", 400);
+          return;
+        }
+        saveAccount(account, scenarioId);
+        sendJson(res, { success: true, trade });
+      } catch (e) {
+        sendError(res, e instanceof Error ? e.message : String(e));
+      }
+      return;
+    }
+
+    // ── Adjust stop loss ──
+    const slMatch = matchRoute(pathname, "/api/positions/:symbol/stop-loss");
+    if (slMatch && method === "PUT") {
+      try {
+        const body = await parseBody<{ scenarioId: string; stopLoss: number }>(req);
+        const { scenarioId, stopLoss } = body;
+        const symbol = slMatch.symbol!;
+        const account = loadAccount(undefined, scenarioId);
+        const pos = account.positions[symbol];
+        if (!pos) {
+          sendError(res, `No position found for ${symbol} in ${scenarioId}`, 404);
+          return;
+        }
+        if (pos.side === "long" && stopLoss >= pos.entryPrice) {
+          sendError(res, "Long SL must be below entry price", 400);
+          return;
+        }
+        if (pos.side === "short" && stopLoss <= pos.entryPrice) {
+          sendError(res, "Short SL must be above entry price", 400);
+          return;
+        }
+        pos.stopLoss = stopLoss;
+        saveAccount(account, scenarioId);
+        sendJson(res, { success: true, symbol, stopLoss });
+      } catch (e) {
+        sendError(res, e instanceof Error ? e.message : String(e));
+      }
+      return;
+    }
+
+    // ── Manual trade ──
+    if (pathname === "/api/manual-trade" && method === "POST") {
+      try {
+        const body = await parseBody<{
+          symbol: string;
+          side: "buy" | "short";
+          amountUsdt: number;
+          scenarioId: string;
+          stopLossPercent?: number;
+          takeProfitPercent?: number;
+        }>(req);
+
+        if (isKillSwitchActive()) {
+          sendError(res, "Kill switch is active — trading blocked", 403);
+          return;
+        }
+
+        const { symbol, side, amountUsdt, scenarioId, stopLossPercent, takeProfitPercent } = body;
+        const account = loadAccount(undefined, scenarioId);
+
+        if (account.positions[symbol]) {
+          sendError(res, `Position already exists for ${symbol} in ${scenarioId}`, 400);
+          return;
+        }
+        if (account.usdt < amountUsdt) {
+          sendError(res, `Insufficient balance: ${account.usdt.toFixed(2)} USDT available, ${amountUsdt} required`, 400);
+          return;
+        }
+
+        const price = await getPrice(symbol);
+        let trade;
+        if (side === "buy") {
+          trade = paperBuy(account, symbol, price, "manual trade via dashboard", {
+            overridePositionUsdt: amountUsdt,
+            stopLossPercent,
+            takeProfitPercent,
+          });
+        } else {
+          trade = paperOpenShort(account, symbol, price, "manual trade via dashboard", {
+            overridePositionUsdt: amountUsdt,
+            stopLossPercent,
+            takeProfitPercent,
+          });
+        }
+
+        if (!trade) {
+          sendError(res, "Trade failed — returned null", 400);
+          return;
+        }
+        saveAccount(account, scenarioId);
+        sendJson(res, { success: true, trade });
+      } catch (e) {
+        sendError(res, e instanceof Error ? e.message : String(e));
+      }
+      return;
+    }
+
+    // ── Next.js static files (pass through for SPA) ──
+
     res.writeHead(404); res.end("Not Found");
+  }
+
+  server = http.createServer((req, res) => {
+    void handleRequest(req, res).catch((err) => {
+      log.error(`Request error: ${err instanceof Error ? err.message : String(err)}`);
+      if (!res.headersSent) sendError(res, "Internal Server Error", 500);
+    });
   });
 
   // Security: bind to localhost only, prevent external access (no authentication)

@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useDashboardData, usePrices } from "@/hooks/use-dashboard";
+import { useClosePosition, useAdjustStopLoss } from "@/hooks/use-mutations";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -12,6 +13,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
 import {
   formatPrice,
   formatPnl,
@@ -22,7 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 import { TableSkeleton } from "@/components/dashboard/loading-skeleton";
 import type { PositionWithPnl, PriceMap } from "@shared/web/api-types";
-import { ArrowUpDown } from "lucide-react";
+import { ArrowUpDown, X, Pencil } from "lucide-react";
 
 type SortKey = "symbol" | "side" | "pnl" | "pnlPct" | "entryTime";
 type SortDir = "asc" | "desc";
@@ -116,6 +129,7 @@ export default function PositionsPage() {
                   <TableHead className="text-xs text-right">TP</TableHead>
                   <SortHead label="Duration" sortKey="entryTime" current={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
                   <TableHead className="text-xs">Scenario</TableHead>
+                  <TableHead className="text-xs text-center">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -179,6 +193,12 @@ export default function PositionsPage() {
                       <TableCell className="text-xs text-muted-foreground py-2">
                         {pos.scenarioId}
                       </TableCell>
+                      <TableCell className="py-2">
+                        <div className="flex items-center justify-center gap-1">
+                          <ClosePositionButton symbol={pos.symbol} scenarioId={pos.scenarioId} side={pos.side} />
+                          <AdjustSlButton symbol={pos.symbol} scenarioId={pos.scenarioId} side={pos.side} entryPrice={pos.entryPrice} currentSl={pos.stopLoss} />
+                        </div>
+                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -188,6 +208,113 @@ export default function PositionsPage() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function ClosePositionButton({ symbol, scenarioId, side }: { symbol: string; scenarioId: string; side: string }) {
+  const closeMut = useClosePosition();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button variant="ghost" size="icon-xs" className="text-loss/70 hover:text-loss" />}>
+        <X className="w-3.5 h-3.5" />
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Close Position</DialogTitle>
+          <DialogDescription>
+            Close {side.toUpperCase()} position for {symbol.replace("USDT", "")} in scenario {scenarioId}? This will execute at the current market price.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" size="sm" />}>
+            Cancel
+          </DialogClose>
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={closeMut.isPending}
+            onClick={() => {
+              closeMut.mutate({ symbol, scenarioId }, {
+                onSuccess: () => setOpen(false),
+              });
+            }}
+          >
+            {closeMut.isPending ? "Closing..." : "Close Position"}
+          </Button>
+        </DialogFooter>
+        {closeMut.isError && (
+          <p className="text-xs text-loss mt-1">{closeMut.error.message}</p>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AdjustSlButton({ symbol, scenarioId, side, entryPrice, currentSl }: {
+  symbol: string;
+  scenarioId: string;
+  side: string;
+  entryPrice: number;
+  currentSl: number;
+}) {
+  const slMut = useAdjustStopLoss();
+  const [open, setOpen] = useState(false);
+  const [slValue, setSlValue] = useState(String(currentSl));
+
+  const newSl = parseFloat(slValue);
+  const isValid = !isNaN(newSl) && newSl > 0 &&
+    (side === "long" ? newSl < entryPrice : newSl > entryPrice);
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (v) setSlValue(String(currentSl)); }}>
+      <DialogTrigger render={<Button variant="ghost" size="icon-xs" className="text-muted-foreground hover:text-foreground" />}>
+        <Pencil className="w-3.5 h-3.5" />
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Adjust Stop Loss</DialogTitle>
+          <DialogDescription>
+            {symbol.replace("USDT", "")} ({side.toUpperCase()}) — Entry: {formatPrice(entryPrice)}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <label className="text-xs text-muted-foreground">New Stop Loss Price</label>
+          <Input
+            type="number"
+            step="any"
+            value={slValue}
+            onChange={(e) => setSlValue(e.target.value)}
+            className="font-mono"
+          />
+          {slValue && !isValid && (
+            <p className="text-xs text-loss">
+              {side === "long" ? "SL must be below entry price" : "SL must be above entry price"}
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" size="sm" />}>
+            Cancel
+          </DialogClose>
+          <Button
+            size="sm"
+            disabled={!isValid || slMut.isPending}
+            onClick={() => {
+              slMut.mutate({ symbol, scenarioId, stopLoss: newSl }, {
+                onSuccess: () => setOpen(false),
+              });
+            }}
+          >
+            {slMut.isPending ? "Saving..." : "Update SL"}
+          </Button>
+        </DialogFooter>
+        {slMut.isError && (
+          <p className="text-xs text-loss mt-1">{slMut.error.message}</p>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -8,6 +8,7 @@ import {
   History,
   BarChart3,
   Activity,
+  PlusCircle,
   HeartPulse,
   FileText,
   type LucideIcon,
@@ -26,6 +27,7 @@ const navItems: NavItem[] = [
   { label: "Trades", href: "/trades", icon: History },
   { label: "Performance", href: "/performance", icon: BarChart3 },
   { label: "Signals", href: "/signals", icon: Activity },
+  { label: "Manual Trade", href: "/manual-trade", icon: PlusCircle },
   { label: "Health", href: "/health", icon: HeartPulse },
   { label: "Reports", href: "/reports", icon: FileText },
 ];

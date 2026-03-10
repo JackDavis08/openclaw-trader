@@ -35,7 +35,7 @@ export interface KillSwitchStatus {
 }
 
 // ─────────────────────────────────────────────────────
-// Mutations (Phase 3+)
+// Mutations (Phase 3)
 // ─────────────────────────────────────────────────────
 
 export interface ManualTradeRequest {
@@ -45,6 +45,37 @@ export interface ManualTradeRequest {
   scenarioId: string;
   stopLossPercent?: number;
   takeProfitPercent?: number;
+}
+
+export interface ClosePositionRequest {
+  scenarioId: string;
+}
+
+export interface AdjustStopLossRequest {
+  scenarioId: string;
+  stopLoss: number;
+}
+
+export interface KillSwitchToggleRequest {
+  active: boolean;
+  reason?: string;
+  autoResumeMinutes?: number;
+}
+
+export interface ClosePositionResponse {
+  success: boolean;
+  trade: unknown;
+}
+
+export interface AdjustStopLossResponse {
+  success: boolean;
+  symbol: string;
+  stopLoss: number;
+}
+
+export interface ManualTradeResponse {
+  success: boolean;
+  trade: unknown;
 }
 
 export interface ConfigUpdateRequest {

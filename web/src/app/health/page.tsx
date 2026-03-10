@@ -1,11 +1,23 @@
 "use client";
 
 import { useRef, useEffect, useState, useMemo } from "react";
-import { useHealth, useHealthSnapshot, useLogs } from "@/hooks/use-dashboard";
+import { useHealth, useHealthSnapshot, useKillSwitch, useLogs } from "@/hooks/use-dashboard";
+import { useToggleKillSwitch } from "@/hooks/use-mutations";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { TableSkeleton } from "@/components/dashboard/loading-skeleton";
 import {
@@ -17,6 +29,8 @@ import {
   Server,
   Cpu,
   HardDrive,
+  ShieldAlert,
+  ShieldCheck,
 } from "lucide-react";
 
 const statusIcons: Record<string, typeof CheckCircle2> = {
@@ -38,6 +52,9 @@ export default function HealthPage() {
 
   return (
     <div className="space-y-4">
+      {/* Kill Switch */}
+      <KillSwitchCard />
+
       {/* Server Info Cards */}
       {health && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -148,6 +165,115 @@ export default function HealthPage() {
       {/* Log Viewer */}
       <LogViewer />
     </div>
+  );
+}
+
+function KillSwitchCard() {
+  const { data: ks } = useKillSwitch();
+  const toggleMut = useToggleKillSwitch();
+  const [activateOpen, setActivateOpen] = useState(false);
+  const [reason, setReason] = useState("");
+
+  const isActive = ks?.active ?? false;
+
+  function handleDeactivate() {
+    toggleMut.mutate({ active: false });
+  }
+
+  function handleActivate() {
+    toggleMut.mutate(
+      { active: true, reason: reason.trim() || "Manual activation via dashboard" },
+      { onSuccess: () => { setActivateOpen(false); setReason(""); } },
+    );
+  }
+
+  return (
+    <Card className={cn("bg-card border-border", isActive && "border-loss/40")}>
+      <CardContent className="pt-4 pb-3 px-4">
+        <div className="flex items-center gap-3">
+          {isActive ? (
+            <ShieldAlert className="w-5 h-5 text-loss flex-shrink-0" />
+          ) : (
+            <ShieldCheck className="w-5 h-5 text-profit flex-shrink-0" />
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">Kill Switch</span>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-[10px] px-1.5 py-0",
+                  isActive ? "border-loss/40 text-loss" : "border-profit/40 text-profit",
+                )}
+              >
+                {isActive ? "ACTIVE" : "INACTIVE"}
+              </Badge>
+            </div>
+            {isActive && ks?.reason && (
+              <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                {ks.reason}
+                {ks.autoResumeAt && (
+                  <span className="ml-2">
+                    Auto-resume: {new Date(ks.autoResumeAt).toLocaleString()}
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
+          <div className="flex-shrink-0">
+            {isActive ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-profit border-profit/40"
+                disabled={toggleMut.isPending}
+                onClick={handleDeactivate}
+              >
+                {toggleMut.isPending ? "..." : "Deactivate"}
+              </Button>
+            ) : (
+              <Dialog open={activateOpen} onOpenChange={setActivateOpen}>
+                <DialogTrigger render={<Button variant="destructive" size="sm" />}>
+                  Activate
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Activate Kill Switch</DialogTitle>
+                    <DialogDescription>
+                      This will block all new trades across all scenarios. Existing positions are not affected.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-1.5">
+                    <label className="text-xs text-muted-foreground">Reason</label>
+                    <Input
+                      placeholder="e.g. Market crash, manual pause"
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                    />
+                  </div>
+                  <DialogFooter>
+                    <DialogClose render={<Button variant="outline" size="sm" />}>
+                      Cancel
+                    </DialogClose>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={toggleMut.isPending}
+                      onClick={handleActivate}
+                    >
+                      {toggleMut.isPending ? "Activating..." : "Activate"}
+                    </Button>
+                  </DialogFooter>
+                  {toggleMut.isError && (
+                    <p className="text-xs text-loss mt-1">{toggleMut.error.message}</p>
+                  )}
+                </DialogContent>
+              </Dialog>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

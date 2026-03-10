@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
-import type { DashboardData, PriceMap, PerfData, HealthStatus, LogResponse, ScenarioInfo, HealthSnapshot, WeeklyReportScenario } from "@shared/web/api-types";
+import type { DashboardData, PriceMap, PerfData, HealthStatus, LogResponse, ScenarioInfo, HealthSnapshot, WeeklyReportScenario, KillSwitchStatus } from "@shared/web/api-types";
 
 export function useDashboardData() {
   return useQuery<DashboardData>({
@@ -57,6 +57,14 @@ export function useHealthSnapshot() {
     queryKey: ["health-snapshot"],
     queryFn: () => api.get("/api/health/snapshot"),
     refetchInterval: 60_000,
+  });
+}
+
+export function useKillSwitch() {
+  return useQuery<KillSwitchStatus>({
+    queryKey: ["kill-switch"],
+    queryFn: () => api.get("/api/kill-switch"),
+    refetchInterval: 10_000,
   });
 }
 

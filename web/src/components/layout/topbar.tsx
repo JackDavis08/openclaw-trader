@@ -8,6 +8,7 @@ import {
   History,
   BarChart3,
   Activity,
+  PlusCircle,
   HeartPulse,
   FileText,
   Menu,
@@ -22,6 +23,7 @@ const mobileNav = [
   { label: "Trades", href: "/trades", icon: History },
   { label: "Performance", href: "/performance", icon: BarChart3 },
   { label: "Signals", href: "/signals", icon: Activity },
+  { label: "Manual Trade", href: "/manual-trade", icon: PlusCircle },
   { label: "Health", href: "/health", icon: HeartPulse },
   { label: "Reports", href: "/reports", icon: FileText },
 ];
@@ -32,6 +34,7 @@ const titles: Record<string, string> = {
   "/trades": "Trade History",
   "/performance": "Performance",
   "/signals": "Signals",
+  "/manual-trade": "Manual Trade",
   "/health": "System Health",
   "/reports": "Reports",
 };

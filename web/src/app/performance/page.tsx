@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/table";
 import { formatPnl, formatUsdt, pnlColor } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
+import type { DayPerf } from "@shared/web/api-types";
 import { TableSkeleton, KpiSkeleton } from "@/components/dashboard/loading-skeleton";
 import type { RiskMetrics } from "@shared/web/api-types";
 import {
@@ -24,6 +25,104 @@ import {
   Cell,
   ReferenceLine,
 } from "recharts";
+
+function formatDateLabel(date: string) {
+  // YYYY-MM-DD → MM/DD
+  const parts = date.split("-");
+  return parts.length === 3 ? `${parts[1]}/${parts[2]}` : date;
+}
+
+function CalendarHeatmap({ data }: { data: DayPerf[] }) {
+  // Build a map of date → DayPerf for the last 3 months
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+  // Align start to Monday
+  const startDay = start.getDay();
+  const mondayOffset = startDay === 0 ? -6 : 1 - startDay;
+  start.setDate(start.getDate() + mondayOffset);
+
+  const dayMap = new Map(data.map((d) => [d.date, d]));
+
+  // Build grid: each column is a week, each row is a day (Mon=0..Sun=6)
+  const weeks: { date: string; pnl: number; trades: number; inRange: boolean }[][] = [];
+  const cursor = new Date(start);
+  while (cursor <= now) {
+    const week: { date: string; pnl: number; trades: number; inRange: boolean }[] = [];
+    for (let dow = 0; dow < 7; dow++) {
+      const key = `${cursor.getFullYear()}-${(cursor.getMonth() + 1).toString().padStart(2, "0")}-${cursor.getDate().toString().padStart(2, "0")}`;
+      const entry = dayMap.get(key);
+      week.push({
+        date: key,
+        pnl: entry?.pnl ?? 0,
+        trades: entry?.trades ?? 0,
+        inRange: cursor <= now,
+      });
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    weeks.push(week);
+  }
+
+  // Color scale
+  const pnls = data.map((d) => Math.abs(d.pnl)).filter((v) => v > 0);
+  const maxAbs = pnls.length > 0 ? Math.max(...pnls) : 1;
+
+  function cellColor(pnl: number, trades: number) {
+    if (trades === 0) return "bg-muted/30";
+    const intensity = Math.min(Math.abs(pnl) / maxAbs, 1);
+    if (pnl > 0) {
+      if (intensity > 0.66) return "bg-emerald-500";
+      if (intensity > 0.33) return "bg-emerald-500/60";
+      return "bg-emerald-500/30";
+    }
+    if (intensity > 0.66) return "bg-red-500";
+    if (intensity > 0.33) return "bg-red-500/60";
+    return "bg-red-500/30";
+  }
+
+  const dayLabels = ["Mon", "", "Wed", "", "Fri", "", ""];
+
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-0.5">
+        {/* Day-of-week labels */}
+        <div className="flex flex-col gap-0.5 mr-1">
+          {dayLabels.map((label, i) => (
+            <div key={i} className="h-3 w-6 text-[9px] text-muted-foreground leading-3">
+              {label}
+            </div>
+          ))}
+        </div>
+        {/* Week columns */}
+        {weeks.map((week, wi) => (
+          <div key={wi} className="flex flex-col gap-0.5">
+            {week.map((day, di) => (
+              <div
+                key={di}
+                title={day.inRange ? `${day.date}: ${day.trades > 0 ? `$${day.pnl.toFixed(2)} (${day.trades} trade${day.trades !== 1 ? "s" : ""})` : "no trades"}` : ""}
+                className={cn(
+                  "h-3 w-3 rounded-[2px]",
+                  day.inRange ? cellColor(day.pnl, day.trades) : "bg-transparent",
+                )}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+      {/* Legend */}
+      <div className="flex items-center gap-1 text-[9px] text-muted-foreground">
+        <span>Loss</span>
+        <div className="h-2.5 w-2.5 rounded-[2px] bg-red-500" />
+        <div className="h-2.5 w-2.5 rounded-[2px] bg-red-500/60" />
+        <div className="h-2.5 w-2.5 rounded-[2px] bg-red-500/30" />
+        <div className="h-2.5 w-2.5 rounded-[2px] bg-muted/30 mx-0.5" />
+        <div className="h-2.5 w-2.5 rounded-[2px] bg-emerald-500/30" />
+        <div className="h-2.5 w-2.5 rounded-[2px] bg-emerald-500/60" />
+        <div className="h-2.5 w-2.5 rounded-[2px] bg-emerald-500" />
+        <span>Profit</span>
+      </div>
+    </div>
+  );
+}
 
 function MetricsCards({ m }: { m: RiskMetrics }) {
   const cards = [
@@ -98,6 +197,7 @@ export default function PerformancePage() {
               <BarChart data={data.byDay} margin={{ top: 5, right: 10, left: 10, bottom: 5 }}>
                 <XAxis
                   dataKey="date"
+                  tickFormatter={formatDateLabel}
                   tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 11 }}
                   axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
                   tickLine={false}
@@ -130,6 +230,20 @@ export default function PerformancePage() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* P&L Calendar Heatmap */}
+      {data.byDay.length > 0 && (
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              P&L Calendar
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pb-3 overflow-x-auto">
+            <CalendarHeatmap data={data.byDay} />
           </CardContent>
         </Card>
       )}

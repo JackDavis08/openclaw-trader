@@ -383,7 +383,7 @@ export function buildPerfData(): PerfData {
   const dayMap = new Map<string, DayPerf>();
   for (const t of closed) {
     const d = new Date(t.timestamp);
-    const key = `${(d.getMonth() + 1).toString().padStart(2, "0")}/${d.getDate().toString().padStart(2, "0")}`;
+    const key = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, "0")}-${d.getDate().toString().padStart(2, "0")}`;
     const day = dayMap.get(key) ?? { date: key, pnl: 0, trades: 0 };
     day.pnl += t.pnl ?? 0;
     day.trades++;
@@ -1422,15 +1422,28 @@ export function startDashboardServer(port = 8080): void {
     return;
   }
 
+  const dashboardAuth = process.env.DASHBOARD_AUTH; // format: "user:pass"
+
   async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const url = new URL(req.url ?? "/", `http://localhost:${port}`);
     const pathname = url.pathname;
     const method = req.method ?? "GET";
 
+    // Basic auth guard (skip OPTIONS for CORS preflight)
+    if (dashboardAuth && method !== "OPTIONS") {
+      const authHeader = req.headers.authorization ?? "";
+      const expected = "Basic " + Buffer.from(dashboardAuth).toString("base64");
+      if (authHeader !== expected) {
+        res.writeHead(401, { "WWW-Authenticate": 'Basic realm="OpenClaw Trader"' });
+        res.end("Unauthorized");
+        return;
+      }
+    }
+
     // CORS headers
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
     if (method === "OPTIONS") {
       res.writeHead(204);

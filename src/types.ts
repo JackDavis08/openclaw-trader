@@ -185,6 +185,8 @@ export interface RiskConfig {
   kelly_min_ratio?: number;
   /** Kelly: maximum position ratio (default 0.40 = 40%) */
   kelly_max_ratio?: number;
+  /** Kelly: minimum closed trade count before switching from fixed to Kelly (default 30) */
+  kelly_min_samples?: number;
 
   // ── ROI Table time-decaying take-profit (optional, takes priority over fixed take_profit_percent) ──
   /**

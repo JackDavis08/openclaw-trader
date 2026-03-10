@@ -366,6 +366,7 @@ async function processSymbol(
             ...(cfg.risk.kelly_half !== undefined ? { half: cfg.risk.kelly_half } : {}),
             ...(cfg.risk.kelly_min_ratio !== undefined ? { minRatio: cfg.risk.kelly_min_ratio } : {}),
             ...(cfg.risk.kelly_max_ratio !== undefined ? { maxRatio: cfg.risk.kelly_max_ratio } : {}),
+            minSamples: cfg.risk.kelly_min_samples ?? 30,
             fallback: cfg.risk.position_ratio,
           });
           log.info(`${label} ${symbol}: 🎯 Kelly → ${kellyResult.reason}`);

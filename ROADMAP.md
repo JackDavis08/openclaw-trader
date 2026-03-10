@@ -21,8 +21,8 @@
 
 ## v0.4 — Strategy & Intelligence
 
-- [ ] **Kelly position sizing activation** — Switch from fixed sizing to half-Kelly after accumulating 30+ closed trades
-- [ ] **Walk-forward scheduling** — Run `auto-wf.ts` on a regular cron schedule to keep parameters fresh
+- [x] **Kelly position sizing activation** — Enabled `position_sizing: "kelly"` with `kelly_min_samples: 30` (auto-fallback to fixed when < 30 trades)
+- [x] **Walk-forward scheduling** — `npm run auto-wf:schedule` with `--interval` day guard for safe cron scheduling
 - [ ] **LLM sentiment enrichment** — Improve OpenClaw Gateway integration for deeper market narrative analysis
 - [ ] **Options flow integration** — Incorporate put/call ratio and open interest changes into signal weighting
 - [ ] **On-chain metrics** — Whale wallet tracking, exchange inflow/outflow signals

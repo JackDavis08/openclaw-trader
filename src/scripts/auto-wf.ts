@@ -3,6 +3,7 @@
  *
  * Usage:
  *   npx tsx src/scripts/auto-wf.ts [--symbols BTCUSDT,ETHUSDT] [--days 90] [--trials 50] [--dry-run] [--notify]
+ *   npx tsx src/scripts/auto-wf.ts --schedule [--interval 7]
  *
  * Parameters:
  *   --symbols, -s     Trading pair list, comma-separated (default BTCUSDT,ETHUSDT)
@@ -14,9 +15,11 @@
  *   --notify          Send Telegram notification (default true)
  *   --no-notify       Disable Telegram notification
  *   --seed            Random seed
+ *   --schedule        Guard mode: skip if last run was < --interval days ago
+ *   --interval        Days between scheduled runs (default 7)
  */
 
-import { runAutoWalkForward, formatAutoWfReport } from "../optimization/auto-wf.js";
+import { runAutoWalkForward, formatAutoWfReport, loadAutoWfState } from "../optimization/auto-wf.js";
 import { sendTelegramMessage } from "../notify/openclaw.js";
 
 // ─────────────────────────────────────────────────────
@@ -32,6 +35,8 @@ interface CliArgs {
   dryRun: boolean;
   notify: boolean;
   seed?: number;
+  schedule: boolean;
+  intervalDays: number;
 }
 
 export function parseArgs(argv: string[]): CliArgs {
@@ -43,6 +48,8 @@ export function parseArgs(argv: string[]): CliArgs {
     minImprovementPct: 5,
     dryRun: false,
     notify: true,
+    schedule: false,
+    intervalDays: 7,
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -94,6 +101,14 @@ export function parseArgs(argv: string[]): CliArgs {
         if (!Number.isNaN(v)) args.seed = v;
         break;
       }
+      case "--schedule":
+        args.schedule = true;
+        break;
+      case "--interval": {
+        const v = parseInt(next(), 10);
+        args.intervalDays = Number.isNaN(v) ? 7 : v;
+        break;
+      }
     }
   }
 
@@ -106,6 +121,20 @@ export function parseArgs(argv: string[]): CliArgs {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+
+  // Schedule guard: skip if last run was too recent
+  if (args.schedule) {
+    const state = loadAutoWfState();
+    if (state.lastRun) {
+      const lastRunMs = new Date(state.lastRun).getTime();
+      const elapsedDays = (Date.now() - lastRunMs) / 86_400_000;
+      if (elapsedDays < args.intervalDays) {
+        console.log(`[auto-wf] Last run: ${state.lastRun} (${elapsedDays.toFixed(1)}d ago), next in ${(args.intervalDays - elapsedDays).toFixed(1)}d — skipping`);
+        return;
+      }
+    }
+    console.log(`[auto-wf] Schedule guard passed (interval: ${args.intervalDays}d), starting optimization…`);
+  }
 
   console.log("╔══════════════════════════════════════════════════╗");
   console.log("║     Auto Walk-Forward Adaptive Optimization       ║");

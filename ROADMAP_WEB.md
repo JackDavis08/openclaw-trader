@@ -4,7 +4,7 @@
 
 ---
 
-## Phase 1 — Foundation (Scaffold & Core Pages) ← Current
+## Phase 1 — Foundation (Scaffold & Core Pages) ✅
 
 - [x] Scaffold `web/` Next.js 15 project (App Router, TypeScript, Tailwind)
 - [x] Configure `@shared/*` alias + API proxy rewrites to backend :8080
@@ -20,26 +20,27 @@
 - [x] **Trade History page** — paginated, filterable, CSV export
 - [x] Update root `package.json` scripts + `.gitignore`
 
-## Phase 2 — Read-Only Advanced Pages
+## Phase 2 — Read-Only Advanced Pages ✅
 
-- [ ] **Performance page** — Sharpe, Sortino, Calmar, Max DD, Profit Factor, daily P&L bar chart, per-symbol breakdown
-- [ ] **Signals page** — signal history table with type badges
-- [ ] **Health page** — health-snapshot.json visualization, live log viewer
-- [ ] **Reports page** — weekly report view, signal attribution table
-- [ ] Backend: extend `buildPerfData()` with risk metrics, add `GET /api/health/snapshot`, `GET /api/reports/weekly`
+- [x] **Performance page** — Sharpe, Sortino, Calmar, Max DD, Profit Factor, daily P&L bar chart, per-symbol breakdown
+- [x] **Signals page** — signal history table with type badges
+- [x] **Health page** — health-snapshot.json visualization, live log viewer
+- [x] **Reports page** — weekly report view, signal attribution table
+- [x] Backend: extend `buildPerfData()` with risk metrics, add `GET /api/health/snapshot`, `GET /api/reports/weekly`
 
-## Phase 3 — Mutations (Interactive Features)
+## Phase 3 — Mutations (Interactive Features) ✅
 
-- [ ] Backend: proper method routing (POST/PUT), `parseBody()` helper, OPTIONS/CORS
-- [ ] `POST /api/positions/:symbol/close` — invoke paperSell/paperCoverShort
-- [ ] `PUT /api/positions/:symbol/stop-loss` — adjust SL in account JSON
-- [ ] `POST /api/manual-trade` — invoke handleSignal with synthetic signal
-- [ ] `PUT /api/kill-switch` — toggle kill switch
-- [ ] Positions page: "Close" button + "Adjust SL" dialog
-- [ ] **Manual Trade page** — order form, price preview, confirmation dialog
-- [ ] Health page: kill switch toggle
+- [x] Backend: async handler, method routing (POST/PUT), `parseBody()` helper, `matchRoute()`, OPTIONS/CORS
+- [x] `GET /api/kill-switch` + `PUT /api/kill-switch` — read & toggle kill switch
+- [x] `GET /api/price/:symbol` — single symbol price lookup
+- [x] `POST /api/positions/:symbol/close` — invoke paperSell/paperCoverShort at market price
+- [x] `PUT /api/positions/:symbol/stop-loss` — adjust SL with validation
+- [x] `POST /api/manual-trade` — open trade with kill switch / balance / duplicate checks
+- [x] Positions page: "Close" button + "Adjust SL" dialog
+- [x] **Manual Trade page** — order form, live price preview, confirmation dialog
+- [x] Health page: kill switch card with activate/deactivate toggle
 
-## Phase 4 — Strategy & Config Management
+## Phase 4 — Strategy & Config Management ← Next
 
 - [ ] `GET /api/strategies` — list strategy profiles + plugin registry
 - [ ] `GET /PUT /api/config/raw/:file` — read/write YAML with validation + backup

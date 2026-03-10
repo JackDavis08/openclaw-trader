@@ -16,3 +16,8 @@ memory/
 
 # Yarn lock (project uses npm)
 yarn.lock
+
+# Web dashboard (Next.js)
+web/.next/
+web/node_modules/
+web/out/

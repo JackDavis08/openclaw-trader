@@ -132,6 +132,28 @@ export interface StrategyListItem {
   scenarios: { id: string; name: string; enabled: boolean }[];
 }
 
+export interface ConfigRawResponse {
+  file: string;
+  content: string;
+  updatedAt: number;
+}
+
+export interface ConfigWriteResponse {
+  success: boolean;
+  file: string;
+  backupPath: string;
+}
+
+export interface ScenarioToggleRequest {
+  enabled: boolean;
+}
+
+export interface ScenarioToggleResponse {
+  success: boolean;
+  id: string;
+  enabled: boolean;
+}
+
 // ─────────────────────────────────────────────────────
 // Prices
 // ─────────────────────────────────────────────────────

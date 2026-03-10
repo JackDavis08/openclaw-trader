@@ -11,6 +11,9 @@ import type {
   ManualTradeResponse,
   KillSwitchToggleRequest,
   KillSwitchStatus,
+  ScenarioToggleRequest,
+  ScenarioToggleResponse,
+  ConfigWriteResponse,
 } from "@shared/web/api-types";
 
 export function useClosePosition() {
@@ -54,6 +57,31 @@ export function useToggleKillSwitch() {
     mutationFn: (body) => api.put("/api/kill-switch", body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["kill-switch"] });
+    },
+  });
+}
+
+export function useToggleScenario() {
+  const qc = useQueryClient();
+  return useMutation<ScenarioToggleResponse, Error, { id: string } & ScenarioToggleRequest>({
+    mutationFn: ({ id, enabled }) =>
+      api.put(`/api/scenarios/${encodeURIComponent(id)}/toggle`, { enabled }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["strategies"] });
+      void qc.invalidateQueries({ queryKey: ["scenarios"] });
+    },
+  });
+}
+
+export function useSaveConfig() {
+  const qc = useQueryClient();
+  return useMutation<ConfigWriteResponse, Error, { file: string; content: string }>({
+    mutationFn: ({ file, content }) =>
+      api.put(`/api/config/raw/${file}`, { content }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["config-raw"] });
+      void qc.invalidateQueries({ queryKey: ["strategies"] });
+      void qc.invalidateQueries({ queryKey: ["scenarios"] });
     },
   });
 }

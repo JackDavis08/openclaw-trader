@@ -11,6 +11,8 @@ import {
   PlusCircle,
   HeartPulse,
   FileText,
+  Layers,
+  Settings,
   Menu,
 } from "lucide-react";
 import { ConnectionBadge } from "./connection-status";
@@ -26,6 +28,8 @@ const mobileNav = [
   { label: "Manual Trade", href: "/manual-trade", icon: PlusCircle },
   { label: "Health", href: "/health", icon: HeartPulse },
   { label: "Reports", href: "/reports", icon: FileText },
+  { label: "Strategies", href: "/strategies", icon: Layers },
+  { label: "Config", href: "/config", icon: Settings },
 ];
 
 const titles: Record<string, string> = {
@@ -37,6 +41,8 @@ const titles: Record<string, string> = {
   "/manual-trade": "Manual Trade",
   "/health": "System Health",
   "/reports": "Reports",
+  "/strategies": "Strategies",
+  "/config": "Config",
 };
 
 export function Topbar() {

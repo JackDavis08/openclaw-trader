@@ -11,6 +11,8 @@ import {
   PlusCircle,
   HeartPulse,
   FileText,
+  Layers,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -30,6 +32,8 @@ const navItems: NavItem[] = [
   { label: "Manual Trade", href: "/manual-trade", icon: PlusCircle },
   { label: "Health", href: "/health", icon: HeartPulse },
   { label: "Reports", href: "/reports", icon: FileText },
+  { label: "Strategies", href: "/strategies", icon: Layers },
+  { label: "Config", href: "/config", icon: Settings },
 ];
 
 export function Sidebar() {

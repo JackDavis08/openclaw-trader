@@ -15,6 +15,12 @@
  *   POST /api/positions/:symbol/close   → Close a position
  *   PUT  /api/positions/:symbol/stop-loss → Adjust stop loss
  *   POST /api/manual-trade              → Open a manual trade
+ *   GET  /api/strategies               → Strategy profiles + linked scenarios + plugin info
+ *   GET  /api/config/raw/:file         → Read config YAML (strategy.yaml, paper.yaml, live.yaml)
+ *   GET  /api/config/raw/strategies/:f → Read strategy profile YAML
+ *   PUT  /api/config/raw/:file         → Validate + backup + write config YAML
+ *   PUT  /api/config/raw/strategies/:f → Validate + backup + write strategy YAML
+ *   PUT  /api/scenarios/:id/toggle     → Toggle scenario enabled/disabled in paper.yaml
  */
 
 import http from "http";
@@ -24,12 +30,15 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { createLogger } from "../logger.js";
 import { loadAccount, saveAccount, paperBuy, paperSell, paperOpenShort, paperCoverShort } from "../paper/account.js";
-import { loadPaperConfig } from "../config/loader.js";
+import { parse } from "yaml";
+import { loadPaperConfig, loadStrategyProfile, listStrategyProfiles } from "../config/loader.js";
+import { listStrategyDetails } from "../strategies/index.js";
 import { activateKillSwitch, deactivateKillSwitch, readKillSwitch, isKillSwitchActive } from "../health/kill-switch.js";
 import { getPrice } from "../exchange/binance.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOGS_DIR = path.resolve(__dirname, "../../logs");
+const CONFIG_DIR = path.resolve(__dirname, "../../config");
 const log = createLogger("dashboard");
 
 // ─────────────────────────────────────────────────────
@@ -1375,6 +1384,7 @@ export function startDashboardServer(port = 8080): void {
         const scenarios = cfg.scenarios.map((s) => ({
           id: s.id,
           name: s.name,
+          strategy: s.strategy_id,
           enabled: s.enabled,
           initial_usdt: s.initial_usdt,
         }));
@@ -1580,6 +1590,171 @@ export function startDashboardServer(port = 8080): void {
         }
         saveAccount(account, scenarioId);
         sendJson(res, { success: true, trade });
+      } catch (e) {
+        sendError(res, e instanceof Error ? e.message : String(e));
+      }
+      return;
+    }
+
+    // ── Strategies list ──
+    if (pathname === "/api/strategies" && method === "GET") {
+      try {
+        const profiles = listStrategyProfiles();
+        const plugins = listStrategyDetails();
+        const pluginMap = new Map(plugins.map((p) => [p.id, p]));
+        const paperCfg = loadPaperConfig();
+
+        const items = profiles.map((profileId) => {
+          let profile: { name: string; description?: string; strategy_id?: string };
+          try {
+            profile = loadStrategyProfile(profileId);
+          } catch {
+            profile = { name: profileId };
+          }
+          const pluginId = profile.strategy_id ?? "default";
+          const plugin = pluginMap.get(pluginId);
+          const scenarios = paperCfg.scenarios
+            .filter((s) => s.strategy_id === profileId)
+            .map((s) => ({ id: s.id, name: s.name, enabled: s.enabled }));
+          return {
+            id: profileId,
+            name: profile.name,
+            description: profile.description ?? "",
+            plugin: plugin?.name ?? pluginId,
+            scenarios,
+          };
+        });
+        sendJson(res, items);
+      } catch (e) {
+        sendError(res, e instanceof Error ? e.message : String(e));
+      }
+      return;
+    }
+
+    // ── Config raw GET ──
+    const configFileWhitelist = ["strategy.yaml", "paper.yaml", "live.yaml"];
+    const configRawMatch = matchRoute(pathname, "/api/config/raw/:file");
+    if (configRawMatch && method === "GET") {
+      const file = configRawMatch.file!;
+      if (file.includes("..") || !configFileWhitelist.includes(file)) {
+        sendError(res, `Not allowed: ${file}`, 403);
+        return;
+      }
+      try {
+        const filePath = path.join(CONFIG_DIR, file);
+        const content = fs.readFileSync(filePath, "utf-8");
+        const stat = fs.statSync(filePath);
+        sendJson(res, { file, content, updatedAt: stat.mtimeMs });
+      } catch (e) {
+        sendError(res, e instanceof Error ? e.message : String(e), 404);
+      }
+      return;
+    }
+
+    // ── Config raw GET (strategy profiles) ──
+    const configStratMatch = matchRoute(pathname, "/api/config/raw/strategies/:file");
+    if (configStratMatch && method === "GET") {
+      const file = configStratMatch.file!;
+      if (file.includes("..") || !file.endsWith(".yaml")) {
+        sendError(res, `Not allowed: ${file}`, 403);
+        return;
+      }
+      try {
+        const filePath = path.join(CONFIG_DIR, "strategies", file);
+        const content = fs.readFileSync(filePath, "utf-8");
+        const stat = fs.statSync(filePath);
+        sendJson(res, { file: `strategies/${file}`, content, updatedAt: stat.mtimeMs });
+      } catch (e) {
+        sendError(res, e instanceof Error ? e.message : String(e), 404);
+      }
+      return;
+    }
+
+    // ── Config raw PUT ──
+    if (configRawMatch && method === "PUT") {
+      const file = configRawMatch.file!;
+      if (file.includes("..") || !configFileWhitelist.includes(file)) {
+        sendError(res, `Not allowed: ${file}`, 403);
+        return;
+      }
+      try {
+        const body = await parseBody<{ content: string }>(req);
+        // Validate YAML
+        try { parse(body.content); } catch (yamlErr) {
+          sendError(res, `Invalid YAML: ${yamlErr instanceof Error ? yamlErr.message : String(yamlErr)}`, 400);
+          return;
+        }
+        const filePath = path.join(CONFIG_DIR, file);
+        const backupPath = filePath + ".bak";
+        if (fs.existsSync(filePath)) fs.copyFileSync(filePath, backupPath);
+        fs.writeFileSync(filePath, body.content, "utf-8");
+        sendJson(res, { success: true, file, backupPath });
+      } catch (e) {
+        sendError(res, e instanceof Error ? e.message : String(e));
+      }
+      return;
+    }
+
+    if (configStratMatch && method === "PUT") {
+      const file = configStratMatch.file!;
+      if (file.includes("..") || !file.endsWith(".yaml")) {
+        sendError(res, `Not allowed: ${file}`, 403);
+        return;
+      }
+      try {
+        const body = await parseBody<{ content: string }>(req);
+        try { parse(body.content); } catch (yamlErr) {
+          sendError(res, `Invalid YAML: ${yamlErr instanceof Error ? yamlErr.message : String(yamlErr)}`, 400);
+          return;
+        }
+        const filePath = path.join(CONFIG_DIR, "strategies", file);
+        const backupPath = filePath + ".bak";
+        if (fs.existsSync(filePath)) fs.copyFileSync(filePath, backupPath);
+        fs.writeFileSync(filePath, body.content, "utf-8");
+        sendJson(res, { success: true, file: `strategies/${file}`, backupPath });
+      } catch (e) {
+        sendError(res, e instanceof Error ? e.message : String(e));
+      }
+      return;
+    }
+
+    // ── Scenario toggle ──
+    const toggleMatch = matchRoute(pathname, "/api/scenarios/:id/toggle");
+    if (toggleMatch && method === "PUT") {
+      try {
+        const scenarioId = toggleMatch.id!;
+        const body = await parseBody<{ enabled: boolean }>(req);
+        const paperPath = path.join(CONFIG_DIR, "paper.yaml");
+        const lines = fs.readFileSync(paperPath, "utf-8").split("\n");
+
+        let found = false;
+        let inTarget = false;
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i]!;
+          if (line.match(new RegExp(`-\\s*id:\\s*["']?${scenarioId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']?`))) {
+            inTarget = true;
+            continue;
+          }
+          if (inTarget && line.match(/^\s+-\s+id:/)) {
+            // Hit next scenario, stop
+            break;
+          }
+          if (inTarget && line.match(/^\s+enabled:/)) {
+            lines[i] = line.replace(/enabled:\s*(true|false)/, `enabled: ${body.enabled}`);
+            found = true;
+            break;
+          }
+        }
+
+        if (!found) {
+          sendError(res, `Scenario "${scenarioId}" not found in paper.yaml`, 404);
+          return;
+        }
+        // Backup then write
+        const backupPath = paperPath + ".bak";
+        fs.copyFileSync(paperPath, backupPath);
+        fs.writeFileSync(paperPath, lines.join("\n"), "utf-8");
+        sendJson(res, { success: true, id: scenarioId, enabled: body.enabled });
       } catch (e) {
         sendError(res, e instanceof Error ? e.message : String(e));
       }

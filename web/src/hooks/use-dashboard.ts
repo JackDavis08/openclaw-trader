@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api-client";
-import type { DashboardData, PriceMap, PerfData, HealthStatus, LogResponse, ScenarioInfo, HealthSnapshot, WeeklyReportScenario, KillSwitchStatus } from "@shared/web/api-types";
+import type { DashboardData, PriceMap, PerfData, HealthStatus, LogResponse, ScenarioInfo, HealthSnapshot, WeeklyReportScenario, KillSwitchStatus, StrategyListItem, ConfigRawResponse } from "@shared/web/api-types";
 
 export function useDashboardData() {
   return useQuery<DashboardData>({
@@ -72,5 +72,20 @@ export function useWeeklyReport() {
   return useQuery<{ reports: WeeklyReportScenario[]; date: string | null }>({
     queryKey: ["weekly-report"],
     queryFn: () => api.get("/api/reports/weekly"),
+  });
+}
+
+export function useStrategies() {
+  return useQuery<StrategyListItem[]>({
+    queryKey: ["strategies"],
+    queryFn: () => api.get("/api/strategies"),
+  });
+}
+
+export function useConfigRaw(file: string | null) {
+  return useQuery<ConfigRawResponse>({
+    queryKey: ["config-raw", file],
+    queryFn: () => api.get(`/api/config/raw/${file}`),
+    enabled: !!file,
   });
 }

@@ -1422,7 +1422,7 @@ export function startDashboardServer(port = 8080): void {
     return;
   }
 
-  const dashboardAuth = process.env.DASHBOARD_AUTH; // format: "user:pass"
+  const dashboardAuth = process.env["DASHBOARD_AUTH"]; // format: "user:pass"
 
   async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const url = new URL(req.url ?? "/", `http://localhost:${port}`);

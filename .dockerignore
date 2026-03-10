@@ -1,0 +1,10 @@
+node_modules
+web/node_modules
+web/.next
+.git
+logs
+.secrets
+.env
+*.log
+dist
+.claude

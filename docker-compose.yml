@@ -1,0 +1,22 @@
+services:
+  bot:
+    build: .
+    ports:
+      - "8080:8080"
+      - "3000:3000"
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./.secrets:/app/.secrets:ro
+    env_file: .env
+    restart: unless-stopped
+
+  telegram:
+    build: .
+    command: ["node", "node_modules/.bin/tsx", "src/scripts/telegram-bot.ts", "--poll"]
+    volumes:
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+    env_file: .env
+    profiles: ["telegram"]
+    restart: unless-stopped

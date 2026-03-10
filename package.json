@@ -27,6 +27,7 @@
     "backtest": "tsx src/scripts/backtest.ts",
     "backtest:compare": "tsx src/scripts/backtest.ts -- --compare",
     "hyperopt": "tsx src/scripts/hyperopt.ts",
+    "scheduler": "tsx src/scheduler.ts",
     "cron:sync": "tsx src/scripts/sync-cron.ts",
     "cron:list": "crontab -l | grep -A1 'openclaw-trader'",
     "test": "vitest run",

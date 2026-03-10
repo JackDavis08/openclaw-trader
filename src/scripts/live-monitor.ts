@@ -123,6 +123,18 @@ function shouldLogFiltered(symbol: string, signalType: string): boolean {
   return true;
 }
 
+// ── Signal notification dedup (same scenarioId+symbol+type only notifies once within 30 minutes) ────
+const _signalNotifyCooldown = new Map<string, number>(); // "${scenarioId}:${symbol}:${type}" → lastNotifyMs
+const SIGNAL_NOTIFY_COOLDOWN_MS = 30 * 60_000;
+
+function shouldNotifySignal(scenarioId: string, symbol: string, signalType: string): boolean {
+  const key = `${scenarioId}:${symbol}:${signalType}`;
+  const last = _signalNotifyCooldown.get(key) ?? 0;
+  if (Date.now() - last < SIGNAL_NOTIFY_COOLDOWN_MS) return false;
+  _signalNotifyCooldown.set(key, Date.now());
+  return true;
+}
+
 /** When signal becomes NONE or passes filter, clear the cooldown state for that symbol */
 function clearFilteredCooldown(symbol: string): void {
   for (const key of _filteredCooldown.keys()) {
@@ -411,10 +423,12 @@ async function processSymbol(
     const adjustedCfg = { ...cfg, risk: { ...effectiveRisk, position_ratio: effectiveRatio } };
     const liveExecutor = createLiveExecutor(adjustedCfg);
 
-    // buy/short: notify immediately (new entry signal)
+    // buy/short: notify immediately (new entry signal), with 30-min dedup cooldown per scenario+symbol
     // sell/cover: notify only if position exists (avoid false alerts when nothing to close)
     if (cfg.notify.on_signal && (signal.type === "buy" || signal.type === "short")) {
-      notifySignal(signal);
+      if (shouldNotifySignal(cfg.paper.scenarioId, symbol, signal.type)) {
+        notifySignal(signal);
+      }
     }
 
     if (signal.type === "buy") {

@@ -14,7 +14,7 @@
 
 ## v0.3 — Observability & Dashboard
 
-- [ ] **Web dashboard auth** — Add basic authentication to `dashboard-server.ts` before production use
+- [x] **Web dashboard auth** — Basic auth via `DASHBOARD_AUTH=user:pass` env var
 - [ ] **Telegram bot as standalone** — Run `telegram-bot.ts` as a persistent process alongside the monitor
 - [ ] **Filtered signal logging** — Log signals rejected by MTF / sentiment gate with rejection reason for post-analysis
 - [ ] **Real-time equity tracking** — Persist equity snapshots at regular intervals for charting
@@ -39,7 +39,6 @@
 - WebSocket-only mode (replace REST polling for sub-second latency)
 - Grid / DCA strategy plugins
 - Portfolio rebalancing strategy
-- Backtesting UI (web-based interactive charts)
 - Strategy marketplace (share/import YAML + plugin bundles)
 
 ---

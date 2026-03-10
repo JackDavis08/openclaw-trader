@@ -56,18 +56,22 @@
 - [x] `GET /api/backtest/results` — list saved result summaries
 - [x] `GET /api/backtest/results/:id` — read full backtest result detail
 - [x] **Backtest page** — run form (strategy, days, timeframe, symbols, spread, next-open), saved results table, detail view with metrics + SVG equity curve + trades table + per-symbol breakdown + exit reason bars
-- [ ] Strategy comparison: side-by-side two-backtest comparison (future)
 
-## Phase 6 — Polish & Production
+## Phase 6 — Polish & Production ✅
+
+- [x] Error boundaries (global + backtest) + 404 not-found page
+- [x] Monthly P&L calendar heatmap (pure CSS grid, last 3 months)
+- [x] Optional basic auth (`DASHBOARD_AUTH=user:pass`)
+- [x] `DayPerf` date format → `YYYY-MM-DD` (bar chart XAxis auto-formats to `MM/DD`)
+- [x] Table mobile scroll fade indicator (Tailwind `after:` gradient)
+
+## Future — Deferred / Nice-to-Have
 
 - [ ] Signal pipeline visualization (15-stage flow diagram)
 - [ ] Execution drift analysis view
-- [ ] Monthly P&L calendar heatmap
-- [ ] Responsive mobile/tablet design
-- [ ] Loading skeletons + error boundaries
-- [ ] Optional basic auth (`DASHBOARD_AUTH=user:pass`)
+- [ ] Strategy comparison: side-by-side two-backtest comparison
+- [ ] WebSocket upgrade for real-time updates
 - [ ] Production build docs (Docker, reverse proxy)
-- [ ] WebSocket upgrade for real-time updates (optional)
 
 ---
 

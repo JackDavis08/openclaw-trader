@@ -11,6 +11,7 @@ export type MarketType = "spot" | "margin" | "futures";
 export type ContractType = "perpetual" | "quarterly";
 export type MarginMode = "isolated" | "cross";
 export type OrderType = "market" | "limit";
+export type ExchangeName = "binance";
 
 // ─────────────────────────────────────────────────────
 // Market / Candle Data
@@ -360,7 +361,7 @@ export interface StrategyConfig {
 // ─────────────────────────────────────────────────────
 
 export interface ExchangeConfig {
-  name?: string;             // Default "binance"
+  name?: ExchangeName;       // Default "binance"
   credentials_path?: string; // API Key/Secret path
   testnet?: boolean;         // true = use testapi.binance.vision, false = production
   market: MarketType;

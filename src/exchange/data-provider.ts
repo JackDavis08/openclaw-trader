@@ -15,6 +15,9 @@
 import { getKlines } from "./binance.js";
 import type { Kline } from "../types.js";
 
+/** Injectable kline fetcher signature (defaults to legacy getKlines from binance.ts) */
+export type KlineFetcher = (symbol: string, interval: string, limit: number) => Promise<Kline[]>;
+
 interface CacheEntry {
   klines: Kline[];
   lastFetch: number;
@@ -22,11 +25,17 @@ interface CacheEntry {
 
 export class DataProvider {
   private readonly cache = new Map<string, CacheEntry>();
+  private readonly staleSec: number;
+  private readonly fetchKlines: KlineFetcher;
 
   /**
-   * @param staleSec Cache TTL in seconds. After expiry, isStale() returns true and next fetch will re-pull.
+   * @param staleSec     Cache TTL in seconds. After expiry, isStale() returns true and next fetch will re-pull.
+   * @param fetchKlines  Optional kline fetcher override (defaults to legacy getKlines from binance.ts)
    */
-  constructor(private readonly staleSec = 30) {}
+  constructor(staleSec = 30, fetchKlines?: KlineFetcher) {
+    this.staleSec = staleSec;
+    this.fetchKlines = fetchKlines ?? getKlines;
+  }
 
   /**
    * Batch pre-fetch klines for symbols (concurrent; failed symbols are silently skipped).
@@ -73,7 +82,7 @@ export class DataProvider {
   /** Fetch a single symbol; skip if cache is still fresh */
   private async fetchOne(symbol: string, timeframe: string, limit: number): Promise<void> {
     if (!this.isStale(symbol, timeframe)) return;
-    const klines = await getKlines(symbol, timeframe, limit);
+    const klines = await this.fetchKlines(symbol, timeframe, limit);
     this.cache.set(cacheKey(symbol, timeframe), { klines, lastFetch: Date.now() });
   }
 }

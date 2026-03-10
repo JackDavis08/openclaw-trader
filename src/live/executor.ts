@@ -12,10 +12,8 @@
  */
 
 import type { Signal, RuntimeConfig } from "../types.js";
-import {
-  BinanceClient,
-  type OrderResponse,
-} from "../exchange/binance-client.js";
+import type { IExchange, ExchangeOrderResponse } from "../exchange/types.js";
+import { createExchange } from "../exchange/factory.js";
 import {
   loadAccount,
   saveAccount,
@@ -63,9 +61,9 @@ function generateId(): string {
   return `live_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-/** Convert Binance OrderResponse to PaperTrade format (for reusing stats tools) */
+/** Convert Binance ExchangeOrderResponse to PaperTrade format (for reusing stats tools) */
 function orderToPaperTrade(
-  order: OrderResponse,
+  order: ExchangeOrderResponse,
   side: PaperTrade["side"],
   reason: string,
   pnl?: number,
@@ -105,7 +103,7 @@ function orderToPaperTrade(
 // ─────────────────────────────────────────────────────
 
 export class LiveExecutor {
-  private readonly client: BinanceClient;
+  private readonly client: IExchange;
   private readonly cfg: RuntimeConfig;
   private readonly scenarioId: string;
   private readonly isTestnet: boolean;
@@ -114,15 +112,12 @@ export class LiveExecutor {
   /** P8.2: Exit rejection cooldown log (symbol -> last rejection timestamp) */
   private readonly _exitRejectionLog = new Map<string, number>();
 
-  constructor(cfg: RuntimeConfig) {
+  constructor(cfg: RuntimeConfig, exchange?: IExchange) {
     this.cfg = cfg;
     this.scenarioId = cfg.paper.scenarioId;
     this.isTestnet = cfg.exchange.testnet ?? false;
 
-    const credsPath = cfg.exchange.credentials_path ?? ".secrets/binance.json";
-    const market = cfg.exchange.market === "futures" ? "futures" : "spot";
-
-    this.client = new BinanceClient(credsPath, this.isTestnet, market);
+    this.client = exchange ?? createExchange(cfg.exchange);
   }
 
   /** Test connection */
@@ -222,7 +217,7 @@ export class LiveExecutor {
     }
 
     // 🔥 Execute real order
-    let order: OrderResponse;
+    let order: ExchangeOrderResponse;
     try {
       order = await this.client.marketBuy(signal.symbol, usdtToSpend);
     } catch (err: unknown) {
@@ -344,7 +339,7 @@ export class LiveExecutor {
     }
 
     // 🔥 Execute real sell
-    let order: OrderResponse;
+    let order: ExchangeOrderResponse;
     try {
       order = await this.client.marketSell(symbol, position.quantity);
     } catch (err: unknown) {
@@ -456,7 +451,7 @@ export class LiveExecutor {
     }
 
     // 🔥 Execute real short order (Futures: SELL = open short)
-    let order: OrderResponse;
+    let order: ExchangeOrderResponse;
     try {
       order = await this.client.marketSell(signal.symbol, qty);
     } catch (err: unknown) {
@@ -584,7 +579,7 @@ export class LiveExecutor {
     }
 
     // 🔥 Execute real cover short order (Futures: BUY = cover short)
-    let order: OrderResponse;
+    let order: ExchangeOrderResponse;
     try {
       order = await this.client.marketBuyByQty(symbol, position.quantity);
     } catch (err: unknown) {
@@ -1193,7 +1188,7 @@ export class LiveExecutor {
     // 2. Place market exit order
     let exitPrice = position.entryPrice; // Fallback price
     try {
-      let exitOrder: OrderResponse;
+      let exitOrder: ExchangeOrderResponse;
       if (isShort) {
         exitOrder = await this.client.marketBuyByQty(symbol, position.quantity);
       } else {
@@ -1270,6 +1265,6 @@ export class LiveExecutor {
  * Create a LiveExecutor from RuntimeConfig
  * Automatically determines testnet / live based on cfg.mode
  */
-export function createLiveExecutor(cfg: RuntimeConfig): LiveExecutor {
-  return new LiveExecutor(cfg);
+export function createLiveExecutor(cfg: RuntimeConfig, exchange?: IExchange): LiveExecutor {
+  return new LiveExecutor(cfg, exchange);
 }

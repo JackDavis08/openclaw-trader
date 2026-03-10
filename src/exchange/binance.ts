@@ -56,7 +56,7 @@ function request(options: https.RequestOptions): Promise<unknown> {
 // Public API (no signature required)
 // ─────────────────────────────────────────────────────
 
-/** Get latest price */
+/** @deprecated Use IExchange.getPrice() via createExchange() instead */
 export async function getPrice(symbol: string): Promise<number> {
   const data = (await request({
     hostname: BASE_URL,
@@ -65,7 +65,7 @@ export async function getPrice(symbol: string): Promise<number> {
   return parseFloat(data.price);
 }
 
-/** Get kline (candlestick) data */
+/** @deprecated Use IExchange.getKlines() via createExchange() instead */
 export async function getKlines(symbol: string, interval: string, limit = 100): Promise<Kline[]> {
   const raw = (await request({
     hostname: BASE_URL,
@@ -87,7 +87,7 @@ export async function getKlines(symbol: string, interval: string, limit = 100): 
 // Private API (signature required)
 // ─────────────────────────────────────────────────────
 
-/** Get account balance */
+/** @deprecated Use IExchange.getUsdtBalance() via createExchange() instead */
 export async function getBalance(cfg: BinanceConfig, asset = "USDT"): Promise<number> {
   const ts = Date.now();
   const query = `timestamp=${ts}`;
@@ -102,7 +102,7 @@ export async function getBalance(cfg: BinanceConfig, asset = "USDT"): Promise<nu
   return balance ? parseFloat(balance.free) : 0;
 }
 
-/** Market buy */
+/** @deprecated Use IExchange.marketBuy() via createExchange() instead */
 export async function marketBuy(
   cfg: BinanceConfig,
   symbol: string,
@@ -169,7 +169,7 @@ export async function marketBuy(
   });
 }
 
-/** Market sell */
+/** @deprecated Use IExchange.marketSell() via createExchange() instead */
 export async function marketSell(
   cfg: BinanceConfig,
   symbol: string,

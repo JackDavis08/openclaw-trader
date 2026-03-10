@@ -12,6 +12,8 @@
 import https from "https";
 import crypto from "crypto";
 import fs from "fs";
+import type { Kline } from "../types.js";
+import type { IExchange } from "./types.js";
 
 // ─────────────────────────────────────────────────────
 // Token Bucket Rate Limiter
@@ -271,7 +273,7 @@ async function httpsRequestWithRetry(
 // BinanceClient Class
 // ─────────────────────────────────────────────────────
 
-export class BinanceClient {
+export class BinanceClient implements IExchange {
   private readonly hostname: string;
   private readonly apiPrefix: string;      // /api/v3 or /fapi/v1
   private readonly accountPrefix: string;  // /api/v3 or /fapi/v2 (Futures account uses v2)
@@ -314,6 +316,23 @@ export class BinanceClient {
     const path = `${this.apiPrefix}/ticker/price?symbol=${symbol}`;
     const res = (await httpsRequestWithRetry(this.hostname, "GET", path, {})) as { price: string };
     return parseFloat(res.price);
+  }
+
+  /** Get kline (candlestick) data */
+  async getKlines(symbol: string, interval: string, limit = 100): Promise<Kline[]> {
+    const path = `${this.apiPrefix}/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+    const raw = (await httpsRequestWithRetry(this.hostname, "GET", path, {})) as [
+      number, string, string, string, string, string, number,
+    ][];
+    return raw.map((k) => ({
+      openTime: k[0],
+      open: parseFloat(k[1]),
+      high: parseFloat(k[2]),
+      low: parseFloat(k[3]),
+      close: parseFloat(k[4]),
+      volume: parseFloat(k[5]),
+      closeTime: k[6],
+    }));
   }
 
   /** Get symbol info (precision, minimum order size, etc.) */

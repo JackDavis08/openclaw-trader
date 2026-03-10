@@ -4,13 +4,13 @@
 
 ---
 
-## v0.2 — Execution Reliability
+## v0.2 — Execution Reliability ✅
 
-- [ ] **Unified MTF filter** — Extract duplicated MTF trend filtering from `monitor.ts` / `live-monitor.ts` into a shared `checkMtfTrend()` function
-- [ ] **Activate Protection Manager** — Pass `recentTrades` from `signal-history.jsonl` into `processSignal()` to enable cooldown / stoploss_guard / max_drawdown protections
-- [ ] **Short staged take-profit** — Initialize `tpStages` for short positions (currently only long positions get staged TP)
-- [ ] **Spot market short signal guard** — Pre-filter `short` signals at the signal detection layer for `spot` market type, avoiding misleading notifications
-- [ ] **Regime confidence config** — Expose the hardcoded `60` confidence threshold as `regime_confidence_threshold` in YAML
+- [x] **Unified MTF filter** — `monitor.ts` now uses `checkMtfFilter()` after signal detection (same pattern as `live-monitor.ts`)
+- [x] **Activate Protection Manager** — `recentTrades` already passed into `processSignal()`, cooldown / stoploss_guard / max_drawdown all active
+- [x] **Short staged take-profit** — `tpStages` initialized for both long and short positions (A-007 fix)
+- [x] **Spot market short signal guard** — Short signals rejected at signal-engine level for spot markets (before notifications)
+- [x] **Regime confidence config** — Exposed as `regime_confidence_threshold` in YAML (default: 60)
 
 ## v0.3 — Observability & Dashboard
 

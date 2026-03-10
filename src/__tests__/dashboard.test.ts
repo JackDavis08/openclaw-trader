@@ -446,7 +446,7 @@ describe("buildPerfData", () => {
       expect(day).toHaveProperty("pnl");
       expect(day).toHaveProperty("trades");
       expect(typeof day.date).toBe("string");
-      expect(day.date).toMatch(/^\d{2}\/\d{2}$/); // MM/DD format
+      expect(day.date).toMatch(/^\d{4}-\d{2}-\d{2}$/); // YYYY-MM-DD format
     }
   });
 

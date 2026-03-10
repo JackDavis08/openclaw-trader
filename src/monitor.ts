@@ -108,13 +108,6 @@ async function scanSymbol(
       if (klines.length < limit) return;
     }
 
-    // ── Multi-timeframe trend filter (MTF) — using shared function (A-001 fix) ──
-    const mtfCheck = await checkMtfFilter(symbol, "buy", cfg, provider);
-    const mtfTrendBull = mtfCheck.trendBull;
-    if (mtfCheck.trendBull !== null) {
-      log.info(`${scenarioPrefix}${symbol}: MTF(${cfg.trend_timeframe}) → ${mtfCheck.trendBull ? "Bullish✅" : "Bearish🚫"}`);
-    }
-
     // ── Build external context (CVD / funding rate / BTC dominance / position side / correlation klines) ──
     let externalCvd: number | undefined;
     let externalFundingRate: number | undefined;
@@ -243,15 +236,16 @@ async function scanSymbol(
       } catch (e: unknown) { log.warn(`${scenarioPrefix}${symbol}: ⚠️ Event calendar load failed: ${e instanceof Error ? e.message : String(e)}`); }
     }
 
-    // MTF filter: buy signal but higher timeframe is bearish -> skip
-    if (signal.type === "buy" && mtfTrendBull === false) {
-      log.info(`${scenarioPrefix}${symbol}: 🚫 MTF trend filter: ${cfg.trend_timeframe} bearish, ignoring 1h buy signal`);
-      return;
-    }
-    // MTF filter: short signal but higher timeframe is bullish -> skip
-    if (signal.type === "short" && mtfTrendBull === true) {
-      log.info(`${scenarioPrefix}${symbol}: 🚫 MTF trend filter: ${cfg.trend_timeframe} bullish, ignoring 1h short signal`);
-      return;
+    // MTF trend filter — using shared function (matches live-monitor.ts)
+    if (signal.type === "buy" || signal.type === "short") {
+      const mtfCheck = await checkMtfFilter(symbol, signal.type, cfg, provider);
+      if (mtfCheck.trendBull !== null) {
+        log.info(`${scenarioPrefix}${symbol}: MTF(${cfg.trend_timeframe}) → ${mtfCheck.trendBull ? "Bullish✅" : "Bearish🚫"}`);
+      }
+      if (mtfCheck.filtered) {
+        log.info(`${scenarioPrefix}${symbol}: 🚫 ${mtfCheck.reason}`);
+        return;
+      }
     }
 
     // Sentiment gate

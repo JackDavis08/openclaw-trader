@@ -299,6 +299,11 @@ export interface StrategyConfig {
   >;
   mode: TradeMode;
   /**
+   * Minimum confidence (0–100) for regime classification to take effect.
+   * Default: 60. Set higher (e.g. 75) for stricter regime detection.
+   */
+  regime_confidence_threshold?: number;
+  /**
    * P5.2 Regime-adaptive parameter overrides
    * Automatically override risk parameters when a specific market regime is detected.
    * key = SignalFilter ("breakout_watch" | "reduced_size" | "all_clear")

@@ -236,10 +236,11 @@ export function processSignal(
   //   Not configured: regime only affects risk params (old behavior), no signal condition filtering.
   //   (To enable auto-categorization filtering, configure any entry in regime_strategies in YAML)
   const regime = classifyRegime(klines);
+  const regimeThreshold = cfg.regime_confidence_threshold ?? 60;
   const regimeSigFilterEnabled =
     cfg.regime_strategies !== undefined && Object.keys(cfg.regime_strategies).length > 0;
   const effectiveSignals =
-    regimeSigFilterEnabled && regime.confidence >= 60
+    regimeSigFilterEnabled && regime.confidence >= regimeThreshold
       ? applyRegimeSignalFilter(cfg, regime.signalFilter)
       : cfg.signals;
   // Merge filtered signal conditions into new cfg (only affects signals field, rest unchanged)
@@ -292,13 +293,20 @@ export function processSignal(
 
   // ── The following filters apply only to buy / short entry signals ────────────
 
+  // Spot market short signal guard: short signals are invalid for spot markets
+  // RuntimeConfig (used by monitor/live-monitor) has exchange; StrategyConfig (tests/backtest) may not
+  const market = "exchange" in cfg ? (cfg as Record<string, unknown> & { exchange: { market: string } }).exchange.market : undefined;
+  if (signal.type === "short" && market && market !== "futures" && market !== "margin") {
+    return buildResult(indicators, signal, cfg.risk, true, `Short signal ignored: market type "${market}" does not support shorting`, undefined, undefined);
+  }
+
   let effectiveRisk: RiskConfig = cfg.risk;
   let effectivePositionRatio: number | undefined;
   let regimeLabel: string | undefined;
 
   // ── 4a. Regime-aware filtering ─────────────────────────────────
   // Regime was pre-computed in step 2b, reused here (no need to call classifyRegime again)
-  if (regime.confidence >= 60) {
+  if (regime.confidence >= regimeThreshold) {
     regimeLabel = regime.label;
 
     if (regime.signalFilter === "breakout_watch") {

@@ -382,7 +382,7 @@ export class BinanceClient implements IExchange {
   }
 
   private buildSignedQuery(params: Record<string, string | number | boolean>): string {
-    const withTimestamp = { ...params, timestamp: Date.now(), recvWindow: 5000 };
+    const withTimestamp = { ...params, timestamp: Date.now(), recvWindow: 10000 };
     const qs = buildQueryString(withTimestamp);
     const sig = sign(this.creds.secretKey, qs);
     return `${qs}&signature=${sig}`;

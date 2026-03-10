@@ -50,12 +50,13 @@
 - [x] **Config page** — 3 tabs (Global Strategy / Paper Scenarios / Strategy Profiles), monospace YAML editor, Save with confirmation dialog, Revert, validation errors
 - [x] Navigation: Strategies + Config added to sidebar & topbar
 
-## Phase 5 — Backtest UI ← Next
+## Phase 5 — Backtest UI ✅
 
-- [ ] `POST /api/backtest/run` — invoke runBacktest() synchronously
-- [ ] `GET /api/backtest/results` — list saved results
-- [ ] **Backtest page** — form (strategy, days, timeframe, symbols), results table, equity chart
-- [ ] Strategy comparison: side-by-side two-backtest comparison
+- [x] `POST /api/backtest/run` — fetch klines + run backtest + save JSON report
+- [x] `GET /api/backtest/results` — list saved result summaries
+- [x] `GET /api/backtest/results/:id` — read full backtest result detail
+- [x] **Backtest page** — run form (strategy, days, timeframe, symbols, spread, next-open), saved results table, detail view with metrics + SVG equity curve + trades table + per-symbol breakdown + exit reason bars
+- [ ] Strategy comparison: side-by-side two-backtest comparison (future)
 
 ## Phase 6 — Polish & Production
 

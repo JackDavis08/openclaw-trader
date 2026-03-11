@@ -5,7 +5,7 @@ description: Operate and maintain the openclaw-trader crypto trading bot. Use wh
 
 # openclaw-trader
 
-AI-powered crypto trading bot with paper trading, backtesting engine, technical indicators (EMA + RSI Wilder + MACD + ATR + VWAP + CVD), news sentiment gating, **full short/bearish engine (Futures/Margin)**, Binance Testnet verification, automated health monitoring, and Freqtrade-inspired execution reliability (ROI Table, order state machine, entry slippage guard, regime-adaptive parameters).
+AI-powered crypto trading bot with paper trading, backtesting engine, technical indicators (EMA + RSI Wilder + MACD + ATR + VWAP + CVD), news sentiment gating, **full short/bearish engine (Futures/Margin)**, Binance Testnet verification, automated health monitoring, Freqtrade-inspired execution reliability (ROI Table, order state machine, entry slippage guard, regime-adaptive parameters), and **AI adaptive parameter tuning (Thompson Sampling Bandit)**.
 
 ## Project Layout
 
@@ -41,6 +41,12 @@ openclaw-trader/
 │   │   ├── account.ts       ← Virtual account (P&L, staged TP, time-stop)
 │   │   ├── engine.ts        ← All exit conditions
 │   │   └── status.ts        ← CLI status viewer
+│   ├── optimization/
+│   │   ├── bandit.ts        ← Thompson Sampling math (Beta sampling, arm select/update)
+│   │   ├── adaptive.ts      ← AdaptiveManager (arm pool, drift bounds, state persistence)
+│   │   ├── param-space.ts   ← Parameter space + perturbWithinBounds()
+│   │   ├── objective.ts     ← applyParams() for param → config overlay
+│   │   └── bayesian.ts      ← Bayesian optimizer (Hyperopt)
 │   ├── backtest/
 │   │   ├── fetcher.ts       ← Historical kline fetcher (paginated + cached)
 │   │   ├── metrics.ts       ← Sharpe / Sortino / Calmar / BTC alpha
@@ -72,6 +78,7 @@ openclaw-trader/
 │       ├── signal-attribution.ts ← Attribution report (npm run attribution)
 │       ├── live-monitor.ts     ← Live/testnet monitor
 │       ├── ws-monitor.ts       ← WebSocket realtime
+│       ├── adaptive-params.ts  ← AI adaptive CLI (status/arms/reset)
 │       └── sync-cron.ts        ← Cron sync (7 tasks)
 ├── .secrets/                ← API keys (gitignored)
 ├── AGENT_POLICY.md          ← Authorization boundary (READ BEFORE ACTING)
@@ -81,6 +88,7 @@ openclaw-trader/
     ├── funding-rate-cache.json     ← 10-min funding rate cache
     ├── heartbeat.json              ← Task heartbeat timestamps
     ├── paper-{scenarioId}.json     ← Paper account state
+    ├── adaptive-state-{scenarioId}.json ← Adaptive arm pool state
     ├── backtest/                   ← Backtest JSON reports
     ├── archive/                    ← Rotated logs (30-day retention)
     └── kline-cache/                ← Historical K-line cache
@@ -139,6 +147,40 @@ npm run hyperopt -- --symbol BTCUSDT --trials 100 --seed 42  # reproducible
 ```
 Output: best params + YAML snippet + logs/hyperopt-results.json
 Objective: `score = sharpe - 0.5 × maxDrawdown%` | Constraint: `ma_short < ma_long`
+
+### AI Adaptive Parameters — Online Bandit Tuning (v1.0)
+
+Thompson Sampling Multi-Armed Bandit for real-time parameter tuning. Maintains K parameter-set variants ("arms"), selects the best before each trade, updates statistics after each close.
+
+```bash
+npm run adaptive:status                     # View adaptive state for all scenarios
+npm run adaptive:arms                       # Detailed arm comparison (params diff, win rate, avg PnL)
+npm run adaptive:reset                      # Reset all arm pools
+npm run adaptive:status -- --scenario <id>  # Single scenario
+```
+
+Enable in `config/strategy.yaml`:
+```yaml
+adaptive:
+  enabled: true
+  mode: "bandit"
+  window_size: 50              # Evaluation window (last N trades)
+  num_arms: 8                  # Concurrent parameter variants
+  min_trades_per_arm: 5        # Min observations before promotion
+  exploration_rate: 0.15       # ε-greedy exploration probability
+  refresh_interval_trades: 30  # Retire worst arms every N trades
+  max_drift_percent: 20        # Max per-param deviation from baseline
+  fallback_on_underperform: true  # Revert to baseline if all arms losing
+```
+
+Key behavior:
+- **Arm 0** = baseline (current YAML params), never removed — safety anchor
+- **Cold start**: returns baseline until ≥1 arm reaches `min_trades_per_arm`
+- **Drift constraint**: each param clamped to `baseline ± max_drift_percent%`
+- **Arm refresh**: every `refresh_interval_trades`, retires bottom 50% arms, mutates best
+- **Fallback**: if all qualified arms have negative avgPnl → reverts to baseline
+- **WF interaction**: if baseline changes (walk-forward updates YAML), arm pool reinitializes
+- **State file**: `logs/adaptive-state-{scenarioId}.json` (persisted across restarts)
 
 ### Dynamic Pairlist — Auto-select best trading pairs (P6.2)
 ```bash
@@ -199,7 +241,7 @@ npm run paper:status
 
 ### Run tests
 ```bash
-npm test              # 1557 unit tests
+npm test              # 1694 unit tests
 npm run typecheck     # 0 TS errors target
 npm run lint          # 0 ESLint errors target
 ```

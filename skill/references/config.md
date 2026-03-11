@@ -142,6 +142,30 @@ regime_overrides:
       "60":  0.005
 ```
 
+## AI Adaptive Parameters (v1.0)
+
+Online bandit-based parameter tuning. Add to `config/strategy.yaml` or per-scenario strategy profile:
+
+```yaml
+# Default: disabled (zero impact on existing behavior)
+adaptive:
+  enabled: false               # Set true to activate
+  mode: "bandit"               # Only "bandit" supported currently
+  window_size: 50              # Evaluation window (last N trades)
+  num_arms: 8                  # Concurrent parameter set variants
+  min_trades_per_arm: 5        # Min trades before arm can be promoted
+  exploration_rate: 0.15       # Probability of exploring non-best arm (ε-greedy)
+  refresh_interval_trades: 30  # Retire worst arms every N closed trades
+  max_drift_percent: 20        # Max per-param deviation from baseline (%)
+  fallback_on_underperform: true  # Revert to baseline if all arms losing
+```
+
+Parameters tuned: `ma_short`, `ma_long`, `rsi_period`, `rsi_overbought`, `rsi_oversold`, `stop_loss_pct`, `take_profit_pct`, `position_ratio`
+
+State persisted to: `logs/adaptive-state-{scenarioId}.json`
+
+CLI: `npm run adaptive:status` / `npm run adaptive:arms` / `npm run adaptive:reset`
+
 ## Available Signal Conditions
 
 | Category | Condition | Description |

@@ -19,6 +19,9 @@ All commands run from the project root.
 | `npm run analysis` | On-demand full market analysis (indicators + macro + sentiment) |
 | `npm run analysis -- --quick` | Quick market scan (skip slow sources) |
 | `npm run attribution` | Signal attribution: win-rate/R:R by signal combination |
+| `npm run adaptive:status` | View AI adaptive parameter state for all scenarios |
+| `npm run adaptive:arms` | Detailed arm comparison (params diff, win rate, PnL) |
+| `npm run adaptive:reset` | Reset adaptive arm pools (re-initialized on next run) |
 
 ## Backtesting
 
@@ -56,7 +59,7 @@ npx tsx src/scripts/test-futures.ts
 
 | Command | Description |
 |---|---|
-| `npm test` | Run all 479 unit tests |
+| `npm test` | Run all 1694 unit tests |
 | `npm run typecheck` | TypeScript type check (0 errors target) |
 | `npm run lint` | ESLint check (0 errors target) |
 

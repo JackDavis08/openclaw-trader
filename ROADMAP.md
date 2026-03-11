@@ -52,23 +52,28 @@
 
 ---
 
-## v0.9 — Real-Time & Performance (planned)
+## v0.9 — WebSocket Monitor Feature Parity ✅
 
-### WebSocket 实时模式
-- **目标**: 替换 REST 轮询, 实现亚秒级信号响应
-- **实现**:
-  - 新增 `src/exchange/ws-stream.ts` — 统一 WebSocket 数据流 (kline / ticker / bookTicker)
-  - `live-monitor.ts` 切换为 WS 事件驱动模式 (保留 REST 作为 fallback)
-  - 支持 `mode: "ws"` 配置项
+- [x] **ws-monitor 全功能对齐** — `ws-monitor.ts` 从 `detectSignal()` 升级为完整 `processSignal()` 管线, 与 `monitor.ts`/`live-monitor.ts` 完全对齐
+- [x] **信号引擎集成** — regime awareness, R:R filter, correlation filter, protection manager 全部接入
+- [x] **入场过滤链** — emergency halt → event calendar → MTF trend filter → sentiment gate (LLM cache) → Kelly sizing → portfolio correlation heat
+- [x] **退出增强** — DCA tranches, signal history close, portfolio exposure + equity snapshot, portfolio rebalancing
+- [x] **BTC 崩盘检测** — 直接使用 WS 实时价格, 零额外 REST 请求
+- [x] **Kill Switch** — CvdManager 接入, 全局熔断保护
+- [x] **动态 pairlist** — `loadPairlistSymbols()` 支持, 保留持仓 symbol
+- [x] **总亏损保护** — 超限暂停入场, 退出仍正常执行
+- [x] **Stablecoin 信号** — 链上数据每小时刷新 (与 live-monitor 共享缓存文件)
 
-### 第二交易所集成
+### 待规划
+
+#### 第二交易所集成
 - **目标**: 在 `IExchange` 抽象层上接入 OKX / Bybit
 - **实现**:
   - 新增 `src/exchange/okx.ts` implements `IExchange`
   - YAML 中 `exchange.name: "okx"` 即可切换
   - 统一 REST + WS 接口映射
 
-### 回测性能优化
+#### 回测性能优化
 - **目标**: 大规模回测 (1000+ 组合) 提速
 - **实现**:
   - Worker Threads 并行回测

@@ -778,7 +778,7 @@ describe("live executor integration (mock)", () => {
     executor.strategy = strategy;
 
     const result = await executor.checkDcaTranches({ BTCUSDT: 50000 }, makeCtx());
-    expect(mockClient.marketSell).toHaveBeenCalledWith("BTCUSDT", expect.closeTo(0.002, 4));
+    expect(mockClient.marketSell).toHaveBeenCalledWith("BTCUSDT", expect.closeTo(0.002, 4), true);
     expect(result[0]?.side).toBe("reduce");
   });
 });

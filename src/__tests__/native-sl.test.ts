@@ -472,7 +472,7 @@ describe("forceExit()", () => {
     await executor.forceExit(account, position, "test", "force_exit_timeout");
 
     expect(mockCancelOrder).toHaveBeenCalledWith("BTCUSDT", 55555);
-    expect(mockMarketSell).toHaveBeenCalledWith("BTCUSDT", 0.01);
+    expect(mockMarketSell).toHaveBeenCalledWith("BTCUSDT", 0.01, true);
   });
 
   it("TC11: position removed from local account after forceExit", async () => {
@@ -547,7 +547,7 @@ describe("forceExit()", () => {
 
     await executor.forceExit(account, position, "test", "force_exit_timeout");
 
-    expect(mockMarketBuyByQty).toHaveBeenCalledWith("BTCUSDT", 0.01);
+    expect(mockMarketBuyByQty).toHaveBeenCalledWith("BTCUSDT", 0.01, true);
     expect(account.positions["BTCUSDT"]).toBeUndefined();
   });
 

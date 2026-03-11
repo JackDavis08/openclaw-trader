@@ -640,7 +640,15 @@ export class BinanceClient implements IExchange {
    * Market sell (sell full BASE asset amount)
    * Quantity is rounded down to stepSize to avoid LOT_SIZE filter failure
    */
-  async marketSell(symbol: string, quantity: number): Promise<OrderResponse> {
+  /**
+   * Market sell by BASE asset quantity.
+   *
+   * @param reduceOnly  When true, the order can only reduce an existing long position
+   *                    (i.e. close long). Pass true when calling from handleSell().
+   *                    Pass false (default) when opening a new short via handleShort().
+   *                    Ignored on spot markets.
+   */
+  async marketSell(symbol: string, quantity: number, reduceOnly = false): Promise<OrderResponse> {
     const symbolInfo = await this.getSymbolInfo(symbol);
     const qty = Math.floor(quantity / symbolInfo.stepSize) * symbolInfo.stepSize;
     const order: Parameters<typeof this.createOrder>[0] = {
@@ -649,21 +657,21 @@ export class BinanceClient implements IExchange {
       type: "MARKET",
       quantity: qty,
     };
-    // Futures: add reduceOnly=true to close long position without opening a new short.
-    // Without this, Binance interprets the SELL as opening a new short and returns -2010
-    // when there is insufficient margin.
-    if (this.market === "futures") {
+    if (this.market === "futures" && reduceOnly) {
       order.reduceOnly = true;
     }
     return this.createOrder(order);
   }
 
   /**
-   * Market buy by BASE asset quantity
-   * Used for covering shorts: when the exact quantity to buy back is known
-   * Quantity is rounded down to stepSize
+   * Market buy by BASE asset quantity.
+   * Used for covering shorts: when the exact quantity to buy back is known.
+   *
+   * @param reduceOnly  When true, the order can only reduce an existing short position
+   *                    (i.e. close short). Pass true when calling from handleCover().
+   *                    Ignored on spot markets.
    */
-  async marketBuyByQty(symbol: string, quantity: number): Promise<OrderResponse> {
+  async marketBuyByQty(symbol: string, quantity: number, reduceOnly = false): Promise<OrderResponse> {
     const symbolInfo = await this.getSymbolInfo(symbol);
     const qty = Math.floor(quantity / symbolInfo.stepSize) * symbolInfo.stepSize;
     const order: Parameters<typeof this.createOrder>[0] = {
@@ -672,8 +680,7 @@ export class BinanceClient implements IExchange {
       type: "MARKET",
       quantity: qty,
     };
-    // Futures: add reduceOnly=true to close short position without opening a new long.
-    if (this.market === "futures") {
+    if (this.market === "futures" && reduceOnly) {
       order.reduceOnly = true;
     }
     return this.createOrder(order);

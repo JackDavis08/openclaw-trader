@@ -338,10 +338,10 @@ export class LiveExecutor {
       catch { /* may already be filled, ignore */ }
     }
 
-    // 🔥 Execute real sell
+    // 🔥 Execute real sell (reduceOnly=true: close long without opening new short)
     let order: ExchangeOrderResponse;
     try {
-      order = await this.client.marketSell(symbol, position.quantity);
+      order = await this.client.marketSell(symbol, position.quantity, true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new Error(`[LiveExecutor] Sell ${symbol} failed: ${msg}`, { cause: err });
@@ -578,10 +578,10 @@ export class LiveExecutor {
       catch { /* may already be filled, ignore */ }
     }
 
-    // 🔥 Execute real cover short order (Futures: BUY = cover short)
+    // 🔥 Execute real cover short order (Futures: BUY reduceOnly=true = cover short without opening new long)
     let order: ExchangeOrderResponse;
     try {
-      order = await this.client.marketBuyByQty(symbol, position.quantity);
+      order = await this.client.marketBuyByQty(symbol, position.quantity, true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new Error(`[LiveExecutor] Cover short ${symbol} failed: ${msg}`, { cause: err });
@@ -1100,7 +1100,7 @@ export class LiveExecutor {
             const reduceQty = reduceUsdt / currentPrice;
             if (reduceQty > 0 && reduceQty <= pos.quantity) {
               try {
-                const order = await this.client.marketSell(symbol, reduceQty);
+                const order = await this.client.marketSell(symbol, reduceQty, true);
                 const execQty = parseFloat(order.executedQty);
                 pos.quantity -= execQty;
                 if (pos.quantity <= 0) {
@@ -1190,9 +1190,9 @@ export class LiveExecutor {
     try {
       let exitOrder: ExchangeOrderResponse;
       if (isShort) {
-        exitOrder = await this.client.marketBuyByQty(symbol, position.quantity);
+        exitOrder = await this.client.marketBuyByQty(symbol, position.quantity, true);
       } else {
-        exitOrder = await this.client.marketSell(symbol, position.quantity);
+        exitOrder = await this.client.marketSell(symbol, position.quantity, true);
       }
 
       const fills = exitOrder.fills;

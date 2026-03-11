@@ -211,7 +211,8 @@ async function refreshStablecoinSignal(): Promise<void> {
       fetchedAt: _stablecoinSignalFetchedAt,
     }));
     log.info(`🔗 On-chain stablecoin signal refreshed: ${_stablecoinSignal}`);
-  } catch {
+  } catch (e: unknown) {
+    log.warn(`On-chain refresh failed: ${e instanceof Error ? e.message : String(e)}`);
     if (!_stablecoinSignal) _stablecoinSignal = readOnchainCache();
   }
 }

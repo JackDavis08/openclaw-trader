@@ -112,8 +112,8 @@ async function main() {
       regimeLog.push(
         `  ${startDate} | ${regime.regime.padEnd(16)} | ${formatPct(returnPct).padEnd(8)} | ${segResult.metrics.totalTrades} trades | ${describeRegimeParams(regime.regime).slice(0, 50)}`
       );
-    } catch {
-      // Insufficient data, skip
+    } catch (e: unknown) {
+      console.error(`  ⚠️ Segment backtest failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

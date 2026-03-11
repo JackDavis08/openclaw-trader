@@ -1616,8 +1616,8 @@ export function startDashboardServer(port = 8080): void {
     const priceMatch = matchRoute(pathname, "/api/price/:symbol");
     if (priceMatch && method === "GET") {
       try {
-        const price = await getPrice(priceMatch.symbol!);
-        sendJson(res, { symbol: priceMatch.symbol, price });
+        const price = await getPrice(priceMatch["symbol"]!);
+        sendJson(res, { symbol: priceMatch["symbol"], price });
       } catch (e) {
         sendError(res, e instanceof Error ? e.message : String(e), 400);
       }
@@ -1630,7 +1630,7 @@ export function startDashboardServer(port = 8080): void {
       try {
         const body = await parseBody<{ scenarioId: string }>(req);
         const { scenarioId } = body;
-        const symbol = closeMatch.symbol!;
+        const symbol = closeMatch["symbol"]!;
         const account = loadAccount(undefined, scenarioId);
         const pos = account.positions[symbol];
         if (!pos) {
@@ -1662,7 +1662,7 @@ export function startDashboardServer(port = 8080): void {
       try {
         const body = await parseBody<{ scenarioId: string; stopLoss: number }>(req);
         const { scenarioId, stopLoss } = body;
-        const symbol = slMatch.symbol!;
+        const symbol = slMatch["symbol"]!;
         const account = loadAccount(undefined, scenarioId);
         const pos = account.positions[symbol];
         if (!pos) {
@@ -1716,19 +1716,16 @@ export function startDashboardServer(port = 8080): void {
         }
 
         const price = await getPrice(symbol);
+        const tradeOpts: { overridePositionUsdt: number; stopLossPercent?: number; takeProfitPercent?: number } = {
+          overridePositionUsdt: amountUsdt,
+        };
+        if (stopLossPercent !== undefined) tradeOpts.stopLossPercent = stopLossPercent;
+        if (takeProfitPercent !== undefined) tradeOpts.takeProfitPercent = takeProfitPercent;
         let trade;
         if (side === "buy") {
-          trade = paperBuy(account, symbol, price, "manual trade via dashboard", {
-            overridePositionUsdt: amountUsdt,
-            stopLossPercent,
-            takeProfitPercent,
-          });
+          trade = paperBuy(account, symbol, price, "manual trade via dashboard", tradeOpts);
         } else {
-          trade = paperOpenShort(account, symbol, price, "manual trade via dashboard", {
-            overridePositionUsdt: amountUsdt,
-            stopLossPercent,
-            takeProfitPercent,
-          });
+          trade = paperOpenShort(account, symbol, price, "manual trade via dashboard", tradeOpts);
         }
 
         if (!trade) {
@@ -1782,7 +1779,7 @@ export function startDashboardServer(port = 8080): void {
     const configFileWhitelist = ["strategy.yaml", "paper.yaml", "live.yaml"];
     const configRawMatch = matchRoute(pathname, "/api/config/raw/:file");
     if (configRawMatch && method === "GET") {
-      const file = configRawMatch.file!;
+      const file = configRawMatch["file"]!;
       if (file.includes("..") || !configFileWhitelist.includes(file)) {
         sendError(res, `Not allowed: ${file}`, 403);
         return;
@@ -1801,7 +1798,7 @@ export function startDashboardServer(port = 8080): void {
     // ── Config raw GET (strategy profiles) ──
     const configStratMatch = matchRoute(pathname, "/api/config/raw/strategies/:file");
     if (configStratMatch && method === "GET") {
-      const file = configStratMatch.file!;
+      const file = configStratMatch["file"]!;
       if (file.includes("..") || !file.endsWith(".yaml")) {
         sendError(res, `Not allowed: ${file}`, 403);
         return;
@@ -1819,7 +1816,7 @@ export function startDashboardServer(port = 8080): void {
 
     // ── Config raw PUT ──
     if (configRawMatch && method === "PUT") {
-      const file = configRawMatch.file!;
+      const file = configRawMatch["file"]!;
       if (file.includes("..") || !configFileWhitelist.includes(file)) {
         sendError(res, `Not allowed: ${file}`, 403);
         return;
@@ -1843,7 +1840,7 @@ export function startDashboardServer(port = 8080): void {
     }
 
     if (configStratMatch && method === "PUT") {
-      const file = configStratMatch.file!;
+      const file = configStratMatch["file"]!;
       if (file.includes("..") || !file.endsWith(".yaml")) {
         sendError(res, `Not allowed: ${file}`, 403);
         return;
@@ -1869,7 +1866,7 @@ export function startDashboardServer(port = 8080): void {
     const toggleMatch = matchRoute(pathname, "/api/scenarios/:id/toggle");
     if (toggleMatch && method === "PUT") {
       try {
-        const scenarioId = toggleMatch.id!;
+        const scenarioId = toggleMatch["id"]!;
         const body = await parseBody<{ enabled: boolean }>(req);
         const paperPath = path.join(CONFIG_DIR, "paper.yaml");
         const lines = fs.readFileSync(paperPath, "utf-8").split("\n");
@@ -1926,10 +1923,10 @@ export function startDashboardServer(port = 8080): void {
         const spreadBps = body.spreadBps ?? 0;
         const signalToNextOpen = body.signalToNextOpen ?? false;
 
-        const cfg = buildBacktestConfig(body.strategy, {
-          timeframe: body.timeframe,
-          symbols: body.symbols,
-        });
+        const overrides: { timeframe?: string; symbols?: string[] } = {};
+        if (body.timeframe !== undefined) overrides.timeframe = body.timeframe;
+        if (body.symbols !== undefined) overrides.symbols = body.symbols;
+        const cfg = buildBacktestConfig(body.strategy, overrides);
 
         const endMs = Date.now();
         const startMs = endMs - days * 86_400_000;
@@ -2034,7 +2031,7 @@ export function startDashboardServer(port = 8080): void {
     const btResultMatch = matchRoute(pathname, "/api/backtest/results/:id");
     if (btResultMatch && method === "GET") {
       try {
-        const id = btResultMatch.id!;
+        const id = btResultMatch["id"]!;
         if (id.includes("..") || id.includes("/")) {
           sendError(res, "Invalid result id", 400);
           return;

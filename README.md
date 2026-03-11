@@ -44,7 +44,7 @@ openclaw-trader monitors crypto markets 24/7, detects trading signals using tech
 - **Economic calendar** — FOMC/CPI/NFP event risk gating
 
 ### Backtesting & Optimization
-- **Backtest engine** — Historical data with Sharpe, Sortino, Calmar, max drawdown, BTC alpha, slippage sweep
+- **Backtest engine** — Historical data with Sharpe, Sortino, Calmar, max drawdown, BTC alpha, slippage sweep; parallel fetch, worker pool, kline cache (v0.10)
 - **Bid/ask spread modeling** — Configurable `spread_bps` for realistic backtest cost simulation
 - **Intra-candle simulation** — High/low price exit checks within each candle
 - **Bayesian hyperopt** — TPE + elite evolution across 8 parameters; walk-forward validation
@@ -53,7 +53,7 @@ openclaw-trader monitors crypto markets 24/7, detects trading signals using tech
 
 ### Operations
 - **Telegram commands** — `/profit`, `/positions`, `/balance`, `/status`, `/forcesell BTCUSDT`
-- **Web dashboard** — Real-time positions, equity curve, trade history (lightweight Express server)
+- **Web dashboard** — Real-time positions, equity curve, trade history (Next.js 15 + shadcn/ui dashboard)
 - **Dynamic pairlist** — Auto-select top pairs by volume/volatility from Binance daily
 - **Watchdog** — Alert if monitor goes silent; health checks every 30 min
 - **Log rotation** — Daily archival, 30-day retention
@@ -167,7 +167,7 @@ const myStrategy: Strategy = {
 registerStrategy(myStrategy);
 ```
 
-Built-in: `default` (YAML conditions), `rsi-reversal`, `breakout`, `ensemble` (multi-strategy voting)
+Built-in: `default` (YAML conditions), `rsi-reversal`, `breakout`, `grid`, `ensemble` (multi-strategy voting)
 
 ## CLI Commands
 
@@ -247,7 +247,7 @@ logs/                           Runtime state, reports, caches, backtest results
 ## Testing
 
 ```bash
-npm test                        # 1557 tests, ~15s
+npm test                        # 1665 tests, ~15s
 npx tsc --noEmit                # TypeScript strict mode check
 ```
 

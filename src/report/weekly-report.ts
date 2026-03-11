@@ -76,8 +76,8 @@ function loadSignalHistory(
       if (rec.scenarioId !== undefined && rec.scenarioId !== scenarioId) continue;
       if (rec.entryTime < sinceMs) continue;
       results.push(rec);
-    } catch {
-      // skip
+    } catch (e: unknown) {
+      console.error(`[weekly-report] Skipping malformed signal record: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

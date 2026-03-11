@@ -44,7 +44,7 @@ openclaw-trader 7×24 监控加密货币市场，通过技术分析 + 情绪分�
 - **经济日历** — FOMC / CPI / NFP 等高风险事件门控
 
 ### 回测与优化
-- **回测引擎** — 历史数据 + 夏普 / 索提诺 / Calmar / 最大回撤 / BTC Alpha / 滑点扫描
+- **回测引擎** — 历史数据 + 夏普 / 索提诺 / Calmar / 最大回撤 / BTC Alpha / 滑点扫描；并行数据拉取、Worker 线程池、K 线缓存（v0.10）
 - **Bid/Ask Spread 建模** — 可配置 `spread_bps`，更真实的回测成本模拟
 - **蜡烛内模拟** — K 线内高低价出场检查
 - **贝叶斯优化** — TPE + 精英进化，8 维参数空间，Walk-Forward 验证
@@ -53,7 +53,7 @@ openclaw-trader 7×24 监控加密货币市场，通过技术分析 + 情绪分�
 
 ### 运维
 - **Telegram 指令** — `/profit`、`/positions`、`/balance`、`/status`、`/forcesell BTCUSDT`
-- **Web 仪表盘** — 实时持仓、资金曲线、交易历史（轻量 Express 服务）
+- **Web 仪表盘** — 实时持仓、资金曲线、交易历史（Next.js 15 + shadcn/ui 仪表盘）
 - **动态币种列表** — 每日从 Binance 按成交量/波动率自动选取
 - **Watchdog** — 监控进程存活，每 30 分钟健康检查
 - **日志轮转** — 每日归档，保留 30 天
@@ -167,7 +167,7 @@ const myStrategy: Strategy = {
 registerStrategy(myStrategy);
 ```
 
-内置策略：`default`（YAML 条件匹配）、`rsi-reversal`（RSI 均值回归）、`breakout`（趋势突破）、`ensemble`（多策略投票）
+内置策略：`default`（YAML 条件匹配）、`rsi-reversal`（RSI 均值回归）、`breakout`（趋势突破）、`grid`（网格策略）、`ensemble`（集成投票）
 
 ## 常用命令
 
@@ -223,6 +223,7 @@ src/
 ├── exchange/                   Binance REST/WS、市场数据、币种列表
 ├── strategy/                   指标、信号、风险过滤、保本止损、ROI Table
 ├── strategies/                 可插拔策略系统（接口 + 注册中心 + 插件）
+├── analysis/                   信号统计分析 + 执行偏差监控
 ├── paper/                      模拟盘引擎（账户、出场、状态）
 ├── backtest/                   回测引擎（数据拉取、运行、指标、报告）
 ├── live/                       实盘/Testnet 执行器 + 持仓对账
@@ -238,7 +239,7 @@ src/
 ## 测试
 
 ```bash
-npm test                        # 1557 测试，约 15 秒
+npm test                        # 1665 测试，约 15 秒
 npx tsc --noEmit                # TypeScript 严格模式检查
 ```
 

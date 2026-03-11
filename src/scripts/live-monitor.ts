@@ -175,8 +175,8 @@ async function refreshStablecoinSignal(): Promise<void> {
       fetchedAt: _stablecoinSignalFetchedAt,
     }));
     log.info(`🔗 On-chain stablecoin signal refreshed: ${_stablecoinSignal}`);
-  } catch {
-    // On network failure, read last value from file
+  } catch (e: unknown) {
+    log.warn(`On-chain refresh failed: ${e instanceof Error ? e.message : String(e)}`);
     if (!_stablecoinSignal) _stablecoinSignal = readOnchainCache();
   }
 }
@@ -800,8 +800,8 @@ async function main(): Promise<void> {
           }
         }
       }
-    } catch {
-      // BTC price fetch failure does not affect main flow
+    } catch (e: unknown) {
+      log.warn(`BTC crash detection failed: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     // P6.2 On-chain stablecoin signal refresh (hourly, silently skip on failure)

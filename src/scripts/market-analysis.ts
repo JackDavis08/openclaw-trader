@@ -292,7 +292,7 @@ async function main() {
       const fgAdjust = fg < 20 ? -2 : fg > 75 ? 2 : 0;
       writeKeywordSentimentCache(kwScore - fgAdjust, localNewsReport.importantNews.length);
     }
-  } catch { /* Don't affect main flow */ }
+  } catch (e: unknown) { console.error(`[sentiment-cache] ${e instanceof Error ? e.message : String(e)}`); }
 
   // Output to console (cron tasks will send to Telegram via announce)
   console.log("\n" + fullReport);

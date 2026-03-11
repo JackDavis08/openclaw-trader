@@ -73,36 +73,13 @@
 - [x] **Walk-forward/sensitivity async** — `walkForwardSingle()` and `runSensitivity()` now async with optional worker pool parameter
 - [x] **Auto-wf parallelism** — Pre-fetches all symbols before optimization loop, cross-symbol parallelism via `Promise.all()`
 
-### 待规划
-
-#### 第二交易所集成
-- **目标**: 在 `IExchange` 抽象层上接入 OKX / Bybit
-- **实现**:
-  - 新增 `src/exchange/okx.ts` implements `IExchange`
-  - YAML 中 `exchange.name: "okx"` 即可切换
-  - 统一 REST + WS 接口映射
-
----
-
 ## v1.0 — Production Readiness (planned)
 
-### 策略集市
-- 社区驱动的 YAML + 插件包分享/导入
-- `openclaw strategy install <name>` CLI 命令
-
-### Backtesting Monte Carlo
-- 随机抽样验证策略稳健性 (confidence interval, max drawdown distribution)
-
-### AI 自适应参数
-- RL/Bandits 替代 walk-forward 的固定优化周期
-- 在线学习: 根据最近 N 笔交易实时微调参数
-
-### 交易所资金流 (付费 API)
-- CryptoQuant / Glassnode 集成: 交易所净流入流出, 鲸鱼地址追踪, SOPR 指标
-
-### Multi-timeframe Dashboard
-- 切换不同时间周期的信号视图
-- 多策略对比面板
+- [ ] **策略集市** — 社区驱动的 YAML + 插件包分享/导入, `openclaw strategy install <name>` CLI 命令
+- [ ] **第二交易所集成** — 在 `IExchange` 抽象层上接入 OKX / Bybit, YAML `exchange.name: "okx"` 切换, 统一 REST + WS 接口映射
+- [ ] **AI 自适应参数** — RL/Bandits 替代 walk-forward 固定优化周期, 在线学习根据最近 N 笔交易实时微调参数
+- [ ] **交易所资金流 (付费 API)** — CryptoQuant / Glassnode 集成: 交易所净流入流出, 鲸鱼地址追踪, SOPR 指标
+- [ ] **Multi-timeframe Dashboard** — 切换不同时间周期的信号视图, 多策略对比面板
 
 ---
 

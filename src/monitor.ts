@@ -11,7 +11,7 @@ import { createLogger } from "./logger.js";
 import { getKlines } from "./exchange/binance.js";
 import { DataProvider } from "./exchange/data-provider.js";
 
-import { notifySignal, notifyError, notifyPaperTrade, notifyStopLoss } from "./notify/openclaw.js";
+import { notifySignal, notifyError, notifyPaperTrade, notifyStopLoss, configureNotify } from "./notify/openclaw.js";
 import {
   handleSignal,
   checkExitConditions,
@@ -637,7 +637,7 @@ async function runScenario(cfg: RuntimeConfig): Promise<void> {
       let lastRebalanceAt = 0;
       try {
         const rs = JSON.parse(fs.readFileSync(rebalanceStatePath, "utf-8")) as { lastRebalanceAt: number };
-        lastRebalanceAt = rs.lastRebalanceAt;
+        lastRebalanceAt = rs.lastRebalanceAt ?? 0;
       } catch { /* first run */ }
 
       if (shouldRebalance(cfg.rebalance, lastRebalanceAt)) {
@@ -698,6 +698,8 @@ async function main(): Promise<void> {
     done();
     return;
   }
+
+  configureNotify(firstRuntime.notify.channel ?? "telegram", firstRuntime.notify.target ?? "");
 
   const mode = firstRuntime.mode;
   const scenarioNames = runtimes.map((r) => r.paper.scenarioId).join(", ");

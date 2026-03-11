@@ -101,7 +101,7 @@ export default tseslint.config(
       "@typescript-eslint/no-unsafe-return": "off",
       "@typescript-eslint/no-explicit-any": "warn",              // 测试里降级为警告
       "@typescript-eslint/no-non-null-assertion": "off",
-      "@typescript-eslint/await-thenable": "off",                // mock resolve 不一定是 Promise
+      "@typescript-eslint/await-thenable": "warn",               // mock resolve 不一定是 Promise（降为 warn 仍能发现真问题）
       "@typescript-eslint/require-await": "off",                 // 测试 stub 常省略 await
       "@typescript-eslint/no-unnecessary-condition": "off",      // 测试断言宽松
       "@typescript-eslint/no-unnecessary-type-parameters": "off",

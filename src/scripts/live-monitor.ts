@@ -984,7 +984,7 @@ async function main(): Promise<void> {
               let lastRebalanceAt = 0;
               try {
                 const rs = JSON.parse(fs.readFileSync(rebalanceStatePath, "utf-8")) as { lastRebalanceAt: number };
-                lastRebalanceAt = rs.lastRebalanceAt;
+                lastRebalanceAt = rs.lastRebalanceAt ?? 0;
               } catch { /* first run */ }
 
               if (shouldRebalance(cfg.rebalance, lastRebalanceAt)) {

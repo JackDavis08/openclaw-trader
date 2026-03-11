@@ -34,7 +34,7 @@ import { readEmergencyHalt } from "./news/emergency-monitor.js";
 import { checkEventRisk, loadCalendar } from "./strategy/events-calendar.js";
 import { readCvdCache } from "./exchange/order-flow.js";
 import { calcKellyRatio } from "./strategy/kelly.js";
-import { loadAccount } from "./paper/account.js";
+import { loadAccount, saveAccount } from "./paper/account.js";
 import type { PaperAccount } from "./paper/account.js";
 import {
   calcCorrelationAdjustedSize,
@@ -46,6 +46,9 @@ import { ping } from "./health/heartbeat.js";
 import { isKillSwitchActive } from "./health/kill-switch.js";
 import { loadRuntimeConfigs } from "./config/loader.js";
 import { computeRebalanceOrders, shouldRebalance } from "./strategy/rebalance.js";
+import { applyParams } from "./optimization/objective.js";
+import { getOrCreateAdaptiveManager } from "./optimization/adaptive.js";
+import type { AdaptiveManager } from "./optimization/adaptive.js";
 import type { RuntimeConfig, Signal, Indicators, Kline } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -171,6 +174,16 @@ async function scanSymbol(
       );
     }
 
+    // ── Adaptive parameters overlay (bandit-based tuning) ──────────
+    let effectiveCfg: RuntimeConfig = cfg;
+    let adaptiveMgr: AdaptiveManager | undefined;
+    if (cfg.adaptive?.enabled && cfg.adaptive.mode === "bandit") {
+      adaptiveMgr = getOrCreateAdaptiveManager(cfg);
+      effectiveCfg = applyParams(adaptiveMgr.getActiveParams(), cfg) as RuntimeConfig;
+      // Preserve non-StrategyConfig fields from original cfg
+      effectiveCfg = { ...cfg, ...effectiveCfg, paper: cfg.paper, exchange: cfg.exchange };
+    }
+
     // ── Unified signal engine (F3) ────────────────────────────────
     const onchainSignal = readOnchainSignal();
     const externalCtx = {
@@ -185,7 +198,7 @@ async function scanSymbol(
       ...(onchainSignal !== undefined ? { stablecoinSignal: onchainSignal } : {}),
     };
     const recentTrades = loadRecentTrades();
-    const engineResult = processSignal(symbol, klines, cfg, externalCtx, recentTrades);
+    const engineResult = processSignal(symbol, klines, effectiveCfg, externalCtx, recentTrades);
 
     if (!engineResult.indicators) return;
 
@@ -349,6 +362,16 @@ async function scanSymbol(
           `${scenarioPrefix}${symbol}: 📝 Paper ${action} @${result.trade.price.toFixed(4)} (position ${(effectiveRatio * 100).toFixed(0)}%)`
         );
         notifyPaperTrade(result.trade, result.account);
+        // Adaptive: attribute arm to opened position
+        if (adaptiveMgr && (result.trade.side === "buy" || result.trade.side === "short")) {
+          try {
+            const acc = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
+            if (acc.positions[symbol]) {
+              acc.positions[symbol].adaptiveArmId = adaptiveMgr.getActiveArmId();
+              saveAccount(acc, cfg.paper.scenarioId);
+            }
+          } catch { /* non-fatal */ }
+        }
       }
       if (gate.action === "warn") {
         notifyError(symbol, new Error(`⚠️ Sentiment warning: ${gate.reason}`));
@@ -474,6 +497,13 @@ async function runScenario(cfg: RuntimeConfig): Promise<void> {
 
   // Stop-loss / take-profit / trailing-stop check
   if (Object.keys(currentPrices).length > 0) {
+    // Snapshot adaptive arm IDs before exits close positions
+    const preExitAccount = loadAccount(cfg.paper.initial_usdt, sid);
+    const armIdSnapshot: Record<string, string | undefined> = {};
+    for (const [sym, pos] of Object.entries(preExitAccount.positions)) {
+      armIdSnapshot[sym] = pos.adaptiveArmId;
+    }
+
     const exits = checkExitConditions(currentPrices, cfg);
     for (const { symbol, trade, reason, pnlPercent } of exits) {
       const emoji = reason === "take_profit" ? "🎯" : "🚨";
@@ -482,6 +512,15 @@ async function runScenario(cfg: RuntimeConfig): Promise<void> {
         reason === "trailing_stop" ? "Trailing-Stop" :
         reason === "time_stop" ? "Time-Stop" : "Stop-Loss";
       log.info(`${prefix}${symbol}: ${emoji} ${label} triggered (${pnlPercent.toFixed(2)}%)`);
+
+      // Adaptive: attribute closed trade to the arm that opened it
+      if (cfg.adaptive?.enabled && cfg.adaptive.mode === "bandit") {
+        try {
+          const mgr = getOrCreateAdaptiveManager(cfg);
+          mgr.onTradeClosed({ pnlPercent, armId: armIdSnapshot[symbol] });
+        } catch { /* non-fatal */ }
+      }
+
       if (reason !== "take_profit") {
         // stop_loss / trailing_stop / time_stop all send stop-loss notification
         notifyStopLoss(symbol, trade.price / (1 + pnlPercent / 100), trade.price, pnlPercent / 100);

@@ -102,6 +102,18 @@ risk:
     threshold: 0.75   # 皮尔逊相关系数阈值（BTC/ETH/BNB/SOL 通常 >0.85，需过滤）
     lookback: 60      # 用最近 60 根 K 线计算相关性
 
+# ── AI Adaptive Parameters (online bandit-based tuning) ──
+# adaptive:
+#   enabled: false
+#   mode: "bandit"
+#   window_size: 50
+#   num_arms: 8
+#   min_trades_per_arm: 5
+#   exploration_rate: 0.15
+#   refresh_interval_trades: 30
+#   max_drift_percent: 20
+#   fallback_on_underperform: true
+
 # ───────────────────────────────────────
 # 订单执行（实盘生效，paper 中仅模拟）
 # ───────────────────────────────────────

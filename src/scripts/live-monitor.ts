@@ -50,6 +50,9 @@ import {
   checkBtcCrash,
 } from "../health/kill-switch.js";
 import { computeRebalanceOrders, shouldRebalance } from "../strategy/rebalance.js";
+import { applyParams } from "../optimization/objective.js";
+import { getOrCreateAdaptiveManager } from "../optimization/adaptive.js";
+import type { AdaptiveManager } from "../optimization/adaptive.js";
 import type { RuntimeConfig, Kline, Indicators } from "../types.js";
 import { createLogger } from "../logger.js";
 import { ping } from "../health/heartbeat.js";
@@ -280,6 +283,15 @@ async function processSymbol(
     );
   }
 
+  // ── Adaptive parameters overlay (bandit-based tuning) ──────────
+  let effectiveCfg: RuntimeConfig = cfg;
+  let adaptiveMgr: AdaptiveManager | undefined;
+  if (cfg.adaptive?.enabled && cfg.adaptive.mode === "bandit") {
+    adaptiveMgr = getOrCreateAdaptiveManager(cfg);
+    effectiveCfg = applyParams(adaptiveMgr.getActiveParams(), cfg) as RuntimeConfig;
+    effectiveCfg = { ...cfg, ...effectiveCfg, paper: cfg.paper, exchange: cfg.exchange };
+  }
+
   // ── Unified signal engine (identical to monitor.ts) ──────────
   const externalCtx = {
     ...(externalCvd !== undefined ? { cvd: externalCvd } : {}),
@@ -293,7 +305,7 @@ async function processSymbol(
     ...(_stablecoinSignal !== undefined ? { stablecoinSignal: _stablecoinSignal } : {}),
   };
   const recentTrades = loadRecentTrades();
-  const engineResult = processSignal(symbol, klines, cfg, externalCtx, recentTrades);
+  const engineResult = processSignal(symbol, klines, effectiveCfg, externalCtx, recentTrades);
 
   if (!engineResult.indicators) {
     log.info(`${label} ${symbol}: Indicator calculation failed, skipping`);
@@ -450,6 +462,16 @@ async function processSymbol(
       } else if (result.trade) {
         log.info(`${label} ${symbol}: Buy successful @${result.trade.price.toFixed(4)} (position ${(effectiveRatio * 100).toFixed(0)}%), orderId=${result.orderId ?? "N/A"}`);
         recordSignalHistory(symbol, "buy", result.trade.price, indicators, signal, cfg);
+        // Adaptive: attribute arm to opened position
+        if (adaptiveMgr) {
+          try {
+            const acc = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
+            if (acc.positions[symbol]) {
+              acc.positions[symbol].adaptiveArmId = adaptiveMgr.getActiveArmId();
+              saveAccount(acc, cfg.paper.scenarioId);
+            }
+          } catch { /* non-fatal */ }
+        }
       }
     } else if (signal.type === "short") {
       const result = await liveExecutor.handleShort(signal);
@@ -458,12 +480,23 @@ async function processSymbol(
       } else if (result.trade) {
         log.info(`${label} ${symbol}: Short opened @${result.trade.price.toFixed(4)} (position ${(effectiveRatio * 100).toFixed(0)}%), orderId=${result.orderId ?? "N/A"}`);
         recordSignalHistory(symbol, "short", result.trade.price, indicators, signal, cfg);
+        // Adaptive: attribute arm to opened position
+        if (adaptiveMgr) {
+          try {
+            const acc = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
+            if (acc.positions[symbol]) {
+              acc.positions[symbol].adaptiveArmId = adaptiveMgr.getActiveArmId();
+              saveAccount(acc, cfg.paper.scenarioId);
+            }
+          } catch { /* non-fatal */ }
+        }
       }
     }
   } else if (signal.type === "sell") {
     // Close long — only notify if position actually exists
     const account = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
     const sigHistId = account.positions[symbol]?.signalHistoryId;
+    const exitArmId = account.positions[symbol]?.adaptiveArmId;
     if (account.positions[symbol]) {
       if (cfg.notify.on_signal) notifySignal(signal);
       const liveExecutor = createLiveExecutor(cfg);
@@ -473,6 +506,10 @@ async function processSymbol(
         if (sigHistId) {
           try { closeSignal(sigHistId, result.trade.price, "signal", result.trade.pnl); } catch { /* skip */ }
         }
+        // Adaptive: reward attribution
+        if (adaptiveMgr && result.trade.pnlPercent !== undefined) {
+          try { adaptiveMgr.onTradeClosed({ pnlPercent: result.trade.pnlPercent, armId: exitArmId }); } catch { /* non-fatal */ }
+        }
       }
     } else {
       log.info(`${label} ${symbol}: Sell signal skipped — no open position`);
@@ -481,6 +518,7 @@ async function processSymbol(
     // Close short — only notify if position actually exists
     const account = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
     const sigHistId = account.positions[symbol]?.signalHistoryId;
+    const exitArmId = account.positions[symbol]?.adaptiveArmId;
     if (account.positions[symbol]) {
       if (cfg.notify.on_signal) notifySignal(signal);
       const liveExecutor = createLiveExecutor(cfg);
@@ -489,6 +527,10 @@ async function processSymbol(
         log.info(`${label} ${symbol}: Cover successful, orderId=${result.orderId ?? "N/A"}`);
         if (sigHistId) {
           try { closeSignal(sigHistId, result.trade.price, "signal", result.trade.pnl); } catch { /* skip */ }
+        }
+        // Adaptive: reward attribution
+        if (adaptiveMgr && result.trade.pnlPercent !== undefined) {
+          try { adaptiveMgr.onTradeClosed({ pnlPercent: result.trade.pnlPercent, armId: exitArmId }); } catch { /* non-fatal */ }
         }
       }
     } else {
@@ -556,6 +598,15 @@ async function checkExits(cfg: RuntimeConfig, executor?: LiveExecutor): Promise<
   await execInstance.checkOrderTimeouts(freshAccount);
   for (const e of exits) {
     log.info(`${label} ${e.symbol}: Exit triggered — ${e.reason} (${e.pnlPercent.toFixed(2)}%)`);
+
+    // Adaptive: reward attribution on exit
+    if (cfg.adaptive?.enabled && cfg.adaptive.mode === "bandit") {
+      try {
+        const mgr = getOrCreateAdaptiveManager(cfg);
+        mgr.onTradeClosed({ pnlPercent: e.pnlPercent, armId: accountSnapshot.positions[e.symbol]?.adaptiveArmId });
+      } catch { /* non-fatal */ }
+    }
+
     // Close signal history record (read signalHistoryId from accountSnapshot, position snapshot before closing)
     const sigHistId = accountSnapshot.positions[e.symbol]?.signalHistoryId;
     if (sigHistId) {

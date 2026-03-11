@@ -43,6 +43,8 @@ export interface PaperPosition {
   entryAtr?: number;
   // Signal history database ID (used to write back results on close)
   signalHistoryId?: string;
+  /** Adaptive arm ID active when this position was opened (for reward attribution) */
+  adaptiveArmId?: string;
   /**
    * Trade ID in SQLite database (G5)
    * Returned by db.insertTrade() on open, used by db.closeTrade() on close

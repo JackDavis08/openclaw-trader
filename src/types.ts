@@ -382,6 +382,25 @@ export interface StrategyConfig {
     max_rebalance_ratio: number;            // max single rebalance as % of equity (default 0.10)
     interval_hours?: number;                // min hours between rebalances (default 24)
   };
+  /** AI Adaptive Parameters config (online bandit-based parameter tuning) */
+  adaptive?: {
+    enabled: boolean;
+    mode: "bandit" | "off";
+    /** Last N trades for evaluation window (default 50) */
+    window_size: number;
+    /** Number of concurrent parameter set variants (default 8) */
+    num_arms: number;
+    /** Minimum trades per arm before it can be promoted (default 5) */
+    min_trades_per_arm: number;
+    /** Probability of exploring non-best arm (default 0.15) */
+    exploration_rate: number;
+    /** Generate new arms every N closed trades (default 30) */
+    refresh_interval_trades: number;
+    /** Max per-param deviation from baseline in % (default 20) */
+    max_drift_percent: number;
+    /** Revert to baseline if all arms are losing (default true) */
+    fallback_on_underperform: boolean;
+  };
 }
 
 // ─────────────────────────────────────────────────────

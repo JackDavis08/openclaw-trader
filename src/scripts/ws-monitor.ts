@@ -63,6 +63,9 @@ import { computeRebalanceOrders, shouldRebalance } from "../strategy/rebalance.j
 import { ping } from "../health/heartbeat.js";
 import { loadRuntimeConfigs } from "../config/loader.js";
 import { createLogger } from "../logger.js";
+import { applyParams } from "../optimization/objective.js";
+import { getOrCreateAdaptiveManager } from "../optimization/adaptive.js";
+import type { AdaptiveManager } from "../optimization/adaptive.js";
 import type { RuntimeConfig, Signal, Indicators, Kline } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -371,6 +374,15 @@ async function runStrategy(
     );
   }
 
+  // ── Adaptive parameters overlay (bandit-based tuning) ──────────
+  let effectiveCfg: RuntimeConfig = cfg;
+  let adaptiveMgr: AdaptiveManager | undefined;
+  if (cfg.adaptive?.enabled && cfg.adaptive.mode === "bandit") {
+    adaptiveMgr = getOrCreateAdaptiveManager(cfg);
+    effectiveCfg = applyParams(adaptiveMgr.getActiveParams(), cfg) as RuntimeConfig;
+    effectiveCfg = { ...cfg, ...effectiveCfg, paper: cfg.paper, exchange: cfg.exchange };
+  }
+
   // ── Unified signal engine (identical to live-monitor.ts) ──────────
   const externalCtx = {
     ...(externalCvd !== undefined ? { cvd: externalCvd } : {}),
@@ -384,7 +396,7 @@ async function runStrategy(
     ...(_stablecoinSignal !== undefined ? { stablecoinSignal: _stablecoinSignal } : {}),
   };
   const recentTrades = loadRecentTrades();
-  const engineResult = processSignal(symbol, klines, cfg, externalCtx, recentTrades);
+  const engineResult = processSignal(symbol, klines, effectiveCfg, externalCtx, recentTrades);
 
   if (!engineResult.indicators) {
     log.info(`[${sid}] ${symbol}: Indicator calculation failed, skipping`);
@@ -537,6 +549,16 @@ async function runStrategy(
       log.info(`[${sid}] ${symbol}: 📝 Paper ${action} @${result.trade.price.toFixed(4)} (position ${(effectiveRatio * 100).toFixed(0)}%)`);
       notifyPaperTrade(result.trade, result.account);
       recordSignalHistory(symbol, signal.type as "buy" | "short", result.trade.price, indicators, signal, cfg);
+      // Adaptive: attribute arm to opened position
+      if (adaptiveMgr) {
+        try {
+          const acc = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
+          if (acc.positions[symbol]) {
+            acc.positions[symbol].adaptiveArmId = adaptiveMgr.getActiveArmId();
+            saveAccount(acc, cfg.paper.scenarioId);
+          }
+        } catch { /* non-fatal */ }
+      }
     }
     if (gate.action === "warn") {
       notifyError(symbol, new Error(`⚠️ Sentiment warning: ${gate.reason}`));
@@ -546,6 +568,7 @@ async function runStrategy(
     // Close position — only notify if position actually exists
     const account = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
     const sigHistId = account.positions[symbol]?.signalHistoryId;
+    const exitArmId = account.positions[symbol]?.adaptiveArmId;
     if (account.positions[symbol]) {
       if (cfg.notify.on_signal) notifySignal(signal);
       const result = handleSignal(signal, cfg);
@@ -555,6 +578,10 @@ async function runStrategy(
         notifyPaperTrade(result.trade, result.account);
         if (sigHistId) {
           try { closeSignal(sigHistId, result.trade.price, "signal", result.trade.pnl); } catch { /* skip */ }
+        }
+        // Adaptive: reward attribution
+        if (adaptiveMgr && result.trade.pnlPercent !== undefined) {
+          try { adaptiveMgr.onTradeClosed({ pnlPercent: result.trade.pnlPercent, armId: exitArmId }); } catch { /* non-fatal */ }
         }
       }
       state.lastSignals[signal.symbol] = { type: signal.type, timestamp: Date.now() };
@@ -587,6 +614,14 @@ async function checkExits(
       reason === "trailing_stop" ? "Trailing stop" :
       reason === "time_stop" ? "Time stop" : "Stop loss";
     log.info(`[${sid}] ${symbol}: ${emoji} ${label} triggered (${pnlPercent.toFixed(2)}%)`);
+
+    // Adaptive: reward attribution on exit
+    if (cfg.adaptive?.enabled && cfg.adaptive.mode === "bandit") {
+      try {
+        const mgr = getOrCreateAdaptiveManager(cfg);
+        mgr.onTradeClosed({ pnlPercent, armId: accountSnapshot.positions[symbol]?.adaptiveArmId });
+      } catch { /* non-fatal */ }
+    }
 
     // Close signal history record
     const sigHistId = accountSnapshot.positions[symbol]?.signalHistoryId;

@@ -98,3 +98,61 @@ export function perturbParams(
   }
   return result;
 }
+
+/**
+ * Perturb parameters within additional drift bounds (for adaptive bandit).
+ * Each parameter is clamped to both the ParamDef range AND the drift bounds.
+ * Ensures ma_short < ma_long constraint.
+ *
+ * @param base    Baseline parameters
+ * @param space   Parameter space definitions
+ * @param bounds  Per-parameter {min, max} drift bounds
+ * @param sigma   Perturbation magnitude (unit space)
+ * @param rng     Random number generator
+ */
+export function perturbWithinBounds(
+  base: ParamSet,
+  space: ParamDef[],
+  bounds: Record<string, { min: number; max: number }>,
+  sigma: number,
+  rng: () => number,
+): ParamSet {
+  const result: ParamSet = {};
+  for (const def of space) {
+    const baseVal = base[def.name] ?? def.min;
+    const encoded = encodeParam(def, baseVal);
+    const noise = (rng() - 0.5) * 2 * sigma;
+    const newUnit = Math.max(0, Math.min(1, encoded + noise));
+    let value = decodeParam(def, newUnit);
+
+    // Clamp to drift bounds
+    const b = bounds[def.name];
+    if (b) {
+      value = Math.max(b.min, Math.min(b.max, value));
+    }
+    // Clamp to ParamDef range
+    value = Math.max(def.min, Math.min(def.max, value));
+
+    if (def.type === "int") {
+      const step = def.step ?? 1;
+      value = Math.round(value / step) * step;
+    }
+
+    result[def.name] = value;
+  }
+
+  // Enforce ma_short < ma_long constraint
+  if (result["ma_short"] !== undefined && result["ma_long"] !== undefined) {
+    if (result["ma_short"] >= result["ma_long"]) {
+      const shortDef = space.find((d) => d.name === "ma_short");
+      const step = shortDef?.step ?? 1;
+      result["ma_short"] = result["ma_long"] - step;
+      // Re-clamp to bounds + range
+      const b = bounds["ma_short"];
+      if (b) result["ma_short"] = Math.max(b.min, result["ma_short"]);
+      if (shortDef) result["ma_short"] = Math.max(shortDef.min, result["ma_short"]);
+    }
+  }
+
+  return result;
+}

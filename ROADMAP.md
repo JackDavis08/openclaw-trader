@@ -27,106 +27,75 @@
 - [x] **Options flow integration** — Already implemented: `options-data.ts` (Deribit IV + PCR), position size multiplier (extreme→0.5×, elevated→0.7×)
 - [x] **On-chain metrics** — Already implemented: `onchain-data.ts` (DeFiLlama stablecoin flow, Blockchair BTC network), `order-flow.ts` (CVD tick-level via WebSocket)
 
----
+## v0.5 — Containerization & Deployment ✅
 
-## v0.5 — Containerization & Deployment
+- [x] **Docker 部署** — `Dockerfile` (Node.js 22 alpine multi-stage) + `docker-compose.yml` (bot / dashboard / telegram)
+- [x] **云原生调度器** — `src/scheduler.ts` 内建 setInterval 调度, 替代系统 crontab
+- [x] **Supervisor 模式** — 单进程管理所有子任务, 进程崩溃自动重启
 
-### Docker 部署 (`Dockerfile` + `docker-compose.yml`)
-- **目标**: 一条命令启动完整交易系统 (`docker compose up -d`)
-- **Dockerfile**: 基于 Node.js 22 alpine, 多阶段构建 (build → runtime), 包含 tsx runtime
-- **docker-compose.yml**: 三个服务:
-  - `bot` — 主监控进程 (`npm run monitor`), 挂载 `config/`, `logs/`, `.secrets/`
-  - `dashboard` — Web dashboard (`npm run dashboard` + `npm run web:start`), 暴露端口 3000
-  - `telegram` — Telegram bot (`npm run telegram-poll`), 可选服务
-- **Volume 映射**: `./config:/app/config`, `./logs:/app/logs`, `./.secrets:/app/.secrets`
-- **环境变量**: 通过 `.env` 文件注入 (`OPENCLAW_GATEWAY_TOKEN`, `TELEGRAM_BOT_TOKEN`, `DASHBOARD_AUTH` 等)
-- **健康检查**: `curl http://localhost:8080/api/health` 作为 Docker healthcheck
-- **.dockerignore**: 排除 `node_modules/`, `.git/`, `logs/`, `.secrets/`
+## v0.6 — Multi-Exchange & Scaling ✅
 
-### 云原生 Cron 调度器
-- **问题**: Docker 容器内无系统 crontab, 现有 `monitor.ts` 依赖外部 cron 触发
-- **方案**: 新增 `src/scheduler.ts` 内建调度器
-  - 使用 Node.js `setInterval` 或 `node-cron` 实现定时任务
-  - 可配置调度项: monitor scan (1min), walk-forward (7d), weekly report, equity snapshot
-  - 调度配置从 `config/schedule.yaml` 读取
-  - 替代系统 crontab, 容器内一个进程管理所有定时任务
-- **Supervisor 模式**: 单进程启动所有子任务 (monitor + dashboard + telegram), 进程崩溃自动重启
+- [x] **交易所抽象层** — `IExchange` 接口 + `BinanceExchange` 实现 + DI 注入到 `LiveExecutor`
+- [x] **多账户支持** — `live.yaml` accounts 数组, composite scenarioId, Dashboard 按账户分组
+
+## v0.7 — Advanced Intelligence ✅
+
+- [x] **期权深度分析** — Max Pain, IV Skew (25d), IV 期限结构 (contango/backwardation), 已集成至 `derivatives-data.ts`
+- [x] **多空比信号集成** — `long-short-signal.ts` 缓存层 + 4 个信号条件 (`ls_ratio_extreme_long/short`, `ls_ratio_long_biased/short_biased`) + monitor 注入
+- [x] **On-chain stablecoin flow** — DeFiLlama 稳定币流量 + `stablecoin_accumulation/distribution` 信号条件
+
+## v0.8 — Strategy Enhancement ✅
+
+- [x] **Grid 策略插件** — `src/strategies/grid.ts`, 算术/几何网格, auto-range 自动范围检测, 通过 `populateSignal`/`adjustPosition`/`shouldExit` 钩子实现网格交易
+- [x] **Portfolio 再平衡** — `src/strategy/rebalance.ts`, 目标权重偏离检测 + 校正订单生成, 集成至 `monitor.ts` 和 `live-monitor.ts`
+- [x] **stateStore 注入修复** — `signal-engine.ts` 为所有非 default 策略插件注入 `stateStore`, 修复 `rsi-reversal` 等插件的状态持久化
 
 ---
 
-## v0.6 — Multi-Exchange & Scaling
+## v0.9 — Real-Time & Performance (planned)
 
-### 交易所抽象层 (`IExchange` 接口)
-- **现状**: 代码与 Binance API 紧耦合 (`binance.ts`, `binance-client.ts`, `executor.ts`)
-- **目标**: 定义统一交易所接口, 支持 OKX, Bybit, Bitget 等
-- **实现细节**:
-  - 新建 `src/exchange/interface.ts`, 定义 `IExchange` 接口:
-    ```
-    getPrice(symbol) → number
-    getKlines(symbol, interval, limit) → Kline[]
-    getBalance(asset) → number
-    marketBuy(symbol, quoteQty) → OrderResult
-    marketSell(symbol, quantity) → OrderResult
-    getOpenOrders() → Order[]
-    cancelOrder(symbol, orderId) → void
-    getFuturesPositions() → Position[]
-    ```
-  - 将 `BinanceClient` 重构为 `BinanceExchange implements IExchange`
-  - `LiveExecutor` 改为接收 `IExchange` 实例 (依赖注入), 不再直接创建 BinanceClient
-  - `ExchangeConfig` 扩展: 新增 `provider: "binance" | "okx" | "bybit"` 字段
-  - 工厂函数 `createExchange(config)` 根据 provider 创建对应实例
-- **第一步**: 先抽象接口 + 重构 Binance 实现, 不立即添加新交易所
-- **涉及文件**: `exchange/binance-client.ts` → `exchange/binance.exchange.ts`, 新建 `exchange/interface.ts`, 修改 `live/executor.ts`
-
-### 多账户支持
-- **场景**: 同一策略在多个交易所账户上运行, 或不同策略绑定不同账户
+### WebSocket 实时模式
+- **目标**: 替换 REST 轮询, 实现亚秒级信号响应
 - **实现**:
-  - `config/live.yaml` 扩展为支持多账户:
-    ```yaml
-    accounts:
-      - id: binance-main
-        provider: binance
-        credentials_path: .secrets/binance-main.json
-        scenarios: [futures-btc, futures-eth]
-      - id: okx-alt
-        provider: okx
-        credentials_path: .secrets/okx.json
-        scenarios: [spot-altcoins]
-    ```
-  - 每个账户独立的 `LiveExecutor` 实例
-  - 账户级别的风控隔离 (各自的 balance, positions, daily loss)
-  - Dashboard 按账户分组展示
+  - 新增 `src/exchange/ws-stream.ts` — 统一 WebSocket 数据流 (kline / ticker / bookTicker)
+  - `live-monitor.ts` 切换为 WS 事件驱动模式 (保留 REST 作为 fallback)
+  - 支持 `mode: "ws"` 配置项
+
+### 第二交易所集成
+- **目标**: 在 `IExchange` 抽象层上接入 OKX / Bybit
+- **实现**:
+  - 新增 `src/exchange/okx.ts` implements `IExchange`
+  - YAML 中 `exchange.name: "okx"` 即可切换
+  - 统一 REST + WS 接口映射
+
+### 回测性能优化
+- **目标**: 大规模回测 (1000+ 组合) 提速
+- **实现**:
+  - Worker Threads 并行回测
+  - 内存缓存 kline 数据 (避免重复文件 I/O)
+  - 增量式 walk-forward (仅重跑变动窗口)
 
 ---
 
-## v0.7 — Advanced Intelligence (可选)
+## v1.0 — Production Readiness (planned)
 
-### 高级数据源增强
-- **交易所资金流**: CryptoQuant / Glassnode API 集成 (需付费 API key)
-  - 交易所 BTC/ETH 净流入流出 (大量流入 = 潜在卖压)
-  - 鲸鱼地址追踪 (大额转账到交易所 = 预警信号)
-  - SOPR (Spent Output Profit Ratio) 链上获利指标
-- **期权深度分析**: 扩展现有 Deribit 集成
-  - Max Pain 计算 (期权到期日价格吸引点)
-  - OI Skew 分析 (看涨/看跌持仓倾斜度)
-  - 隐含波动率期限结构 (contango vs backwardation)
-- **多空比**: Binance Futures API `topLongShortAccountRatio`
-  - 大户多空比 + 散户多空比
-  - 极端值 (>2.0 或 <0.5) 作为逆向信号
+### 策略集市
+- 社区驱动的 YAML + 插件包分享/导入
+- `openclaw strategy install <name>` CLI 命令
 
-### 策略增强
-- **Grid / DCA 策略插件** — 利用现有 `Strategy` 接口实现网格交易策略
-- **Portfolio 再平衡** — 按目标权重定期调整持仓比例
-- **策略集市** — 分享/导入 YAML + 插件包 (社区驱动)
+### Backtesting Monte Carlo
+- 随机抽样验证策略稳健性 (confidence interval, max drawdown distribution)
 
----
+### AI 自适应参数
+- RL/Bandits 替代 walk-forward 的固定优化周期
+- 在线学习: 根据最近 N 笔交易实时微调参数
 
-## Future Ideas
+### 交易所资金流 (付费 API)
+- CryptoQuant / Glassnode 集成: 交易所净流入流出, 鲸鱼地址追踪, SOPR 指标
 
-- WebSocket-only mode (replace REST polling for sub-second latency)
-- Multi-timeframe dashboard (切换不同时间周期的信号视图)
-- Backtesting Monte Carlo simulation (随机抽样验证策略稳健性)
-- AI 自适应参数 (用 RL/Bandits 替代 walk-forward 的固定优化周期)
+### Multi-timeframe Dashboard
+- 切换不同时间周期的信号视图
+- 多策略对比面板
 
 ---
 

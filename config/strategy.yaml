@@ -127,6 +127,13 @@ execution:
 # 通知
 # ───────────────────────────────────────
 notify:
+  # Delivery channel: telegram (default) | qqbot
+  channel: telegram
+  # Delivery target (optional):
+  #   telegram: Telegram chat_id  e.g. "6822969897"
+  #   qqbot:    QQ c2c openid     e.g. "qqbot:c2c:A0165E9A7C10D0C8C4C448653C76D8A7"
+  # Leave empty to use openclaw system event routing (AI session).
+  target: ""
   on_signal: true
   on_trade: true
   on_stop_loss: true

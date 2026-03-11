@@ -46,8 +46,16 @@ function makeConfig(): StrategyConfig {
       max_daily_loss_percent: 5,
     },
     execution: { mode: "paper" },
-    notify: { telegram: { enabled: false, token: "", chatId: "" } },
-  } as StrategyConfig;
+    notify: {
+      channel: "telegram",
+      target: "",
+      on_signal: false, on_trade: false, on_stop_loss: false,
+      on_take_profit: false, on_error: false, on_daily_summary: false,
+      min_interval_minutes: 30,
+    },
+    news: { enabled: false, interval_hours: 24, price_alert_threshold: 5, fear_greed_alert: 20 },
+    mode: "paper",
+  } as unknown as StrategyConfig;
 }
 
 describe("BacktestWorkerPool", () => {

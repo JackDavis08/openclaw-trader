@@ -8,6 +8,25 @@ import type { PaperTrade, PaperAccount } from "../paper/account.js";
 const OPENCLAW_BIN = process.env["OPENCLAW_BIN"] ?? "openclaw";
 const GATEWAY_TOKEN = process.env["OPENCLAW_GATEWAY_TOKEN"] ?? "";
 
+// ── Runtime notify channel config (set via configureNotify on startup) ────────
+let _channel: string = process.env["NOTIFY_CHANNEL"] ?? "telegram";
+let _target: string = process.env["NOTIFY_TARGET"] ?? "";
+
+/**
+ * Configure the notification delivery channel at runtime.
+ * Call once during monitor startup (after loading RuntimeConfig).
+ *
+ * @param channel  "telegram" (default) | "qqbot"
+ * @param target   Delivery target:
+ *                 - telegram: Telegram chat_id (e.g. "6822969897")
+ *                 - qqbot:    QQ c2c openid (e.g. "qqbot:c2c:XXXX")
+ *                 If empty, falls back to openclaw system event routing.
+ */
+export function configureNotify(channel: string, target: string): void {
+  _channel = channel;
+  _target = target;
+}
+
 // ── Cross-scenario notification dedup ────────────────────────────────────────
 // When multiple scenarios run simultaneously, same symbol signals are sent only once (30-minute window)
 const DEDUP_MINUTES = 30;
@@ -41,12 +60,43 @@ function markSignalSent(symbol: string, type: string): void {
 const ERROR_COOLDOWN_MS = 30 * 60_000;
 const _errorLastNotified = new Map<string, number>();
 
-/** Inject system event into OpenClaw main session, trigger AI agent decision */
-function sendToAgent(message: string): void {
+/**
+ * Send a message directly to a specific channel target.
+ * Used when channel + target are explicitly configured.
+ */
+function sendDirectToChannel(text: string): void {
   try {
-    const args = ["system", "event", "--mode", "now"];
-    args.push("--text", message);
-    // Pass GATEWAY_TOKEN via environment variable (not CLI argument) to avoid token leaking in process lists
+    const args = [
+      "message", "send",
+      "--channel", _channel,
+      "--target", _target,
+      "--message", text,
+    ];
+    const env = { ...process.env };
+    if (GATEWAY_TOKEN) env["OPENCLAW_GATEWAY_TOKEN"] = GATEWAY_TOKEN;
+    const result = spawnSync(OPENCLAW_BIN, args, { encoding: "utf-8", timeout: 15000, env });
+    if (result.status !== 0 && result.stderr) {
+      console.error(`sendDirectToChannel(${_channel}) failed:`, result.stderr.slice(0, 200));
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`sendDirectToChannel(${_channel}) failed:`, msg);
+  }
+}
+
+/**
+ * Deliver a message via the configured channel.
+ * - If channel + target are set: send directly via `openclaw message send`
+ * - Otherwise: inject as system event into the AI session (legacy behavior)
+ */
+function sendToAgent(message: string): void {
+  if (_target) {
+    sendDirectToChannel(message);
+    return;
+  }
+  // Fallback: inject into AI session (routes to Telegram by default)
+  try {
+    const args = ["system", "event", "--mode", "now", "--text", message];
     const env = { ...process.env };
     if (GATEWAY_TOKEN) env["OPENCLAW_GATEWAY_TOKEN"] = GATEWAY_TOKEN;
     const result = spawnSync(OPENCLAW_BIN, args, { encoding: "utf-8", timeout: 15000, env });

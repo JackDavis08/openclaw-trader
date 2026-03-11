@@ -25,7 +25,7 @@ import { processSignal } from "../strategy/signal-engine.js";
 import { checkMtfFilter } from "../strategy/mtf-filter.js";
 import { loadRecentTrades } from "../strategy/recent-trades.js";
 import { readSentimentCache } from "../news/sentiment-cache.js";
-import { notifySignal, notifyError, notifyPaperTrade, notifyStopLoss } from "../notify/openclaw.js";
+import { notifySignal, notifyError, notifyPaperTrade, notifyStopLoss, configureNotify } from "../notify/openclaw.js";
 import {
   handleSignal,
   checkExitConditions,
@@ -61,7 +61,7 @@ import {
 } from "../health/kill-switch.js";
 import { computeRebalanceOrders, shouldRebalance } from "../strategy/rebalance.js";
 import { ping } from "../health/heartbeat.js";
-import { loadRuntimeConfigs } from "../config/loader.js";
+import { loadRuntimeConfigs, loadStrategyConfig } from "../config/loader.js";
 import { createLogger } from "../logger.js";
 import { applyParams } from "../optimization/objective.js";
 import { getOrCreateAdaptiveManager } from "../optimization/adaptive.js";
@@ -555,7 +555,7 @@ async function runStrategy(
     const adjustedCfg = { ...cfg, risk: { ...effectiveRisk, position_ratio: effectiveRatio } };
 
     // Notify (with 30-min dedup cooldown per scenario+symbol)
-    if (cfg.notify.on_signal && signal.type !== "sell" && signal.type !== "cover") {
+    if (cfg.notify.on_signal) {
       if (shouldNotifySignal(sid, symbol, signal.type)) {
         notifySignal(signal);
       }
@@ -817,6 +817,10 @@ async function main(): Promise<void> {
     log.info("Strategy is disabled, exiting");
     return;
   }
+
+  // Configure notification channel from strategy config (apply once, globally)
+  const baseCfg = loadStrategyConfig();
+  configureNotify(baseCfg.notify.channel ?? "telegram", baseCfg.notify.target ?? "");
 
   // Union (deduplicated) of all scenario symbols + same timeframe
   const allSymbols = [...new Set(runtimes.flatMap((r) => r.symbols))];

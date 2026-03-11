@@ -239,6 +239,15 @@ export interface ExecutionConfig {
 }
 
 export interface NotifyConfig {
+  /** Delivery channel: "telegram" (default) | "qqbot" */
+  channel?: "telegram" | "qqbot";
+  /**
+   * Delivery target.
+   * - telegram: Telegram chat_id (e.g. "6822969897")
+   * - qqbot:    QQ c2c openid (e.g. "qqbot:c2c:A0165E9A7C10D0C8C4C448653C76D8A7")
+   * If omitted, falls back to openclaw system event routing (AI session).
+   */
+  target?: string;
   on_signal: boolean;
   on_trade: boolean;
   on_stop_loss: boolean;

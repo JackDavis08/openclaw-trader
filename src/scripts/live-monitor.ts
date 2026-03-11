@@ -24,7 +24,7 @@ import { createLiveExecutor, type LiveExecutor } from "../live/executor.js";
 import { reconcilePositions, formatReconcileReport } from "../live/reconcile.js";
 import { loadNewsReport, evaluateSentimentGate } from "../news/sentiment-gate.js";
 import { readSentimentCache } from "../news/sentiment-cache.js";
-import { notifySignal, notifyError } from "../notify/openclaw.js";
+import { notifySignal, notifyError, configureNotify } from "../notify/openclaw.js";
 import { loadAccount, saveAccount } from "../paper/account.js";
 import type { PaperAccount } from "../paper/account.js";
 import {
@@ -467,7 +467,7 @@ async function processSymbol(
 
     // buy/short: notify immediately (new entry signal), with 30-min dedup cooldown per scenario+symbol
     // sell/cover: notify only if position exists (avoid false alerts when nothing to close)
-    if (cfg.notify.on_signal && signal.type !== "sell" && signal.type !== "cover") {
+    if (cfg.notify.on_signal) {
       if (shouldNotifySignal(cfg.paper.scenarioId, symbol, signal.type)) {
         notifySignal(signal);
       }
@@ -671,6 +671,9 @@ async function main(): Promise<void> {
   // Load config
   const base = loadStrategyConfig();
   const paperCfg = loadPaperConfig();
+
+  // Configure notification channel from strategy config (apply once, globally)
+  configureNotify(base.notify.channel ?? "telegram", base.notify.target ?? "");
 
   // CLI arguments
   const scenarioArg = process.argv.find((a) => a.startsWith("--scenario="))?.split("=")[1];

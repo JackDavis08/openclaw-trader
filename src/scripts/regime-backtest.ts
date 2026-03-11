@@ -9,7 +9,7 @@
  * Usage: npm run regime-backtest
  */
 
-import { fetchHistoricalKlines } from "../backtest/fetcher.js";
+import { fetchAllSymbols } from "../backtest/parallel-fetch.js";
 import { runBacktest } from "../backtest/runner.js";
 import { loadStrategyConfig, loadStrategyProfile } from "../config/loader.js";
 import { classifyRegime } from "../strategy/regime.js";
@@ -47,14 +47,11 @@ async function main() {
   const endMs = Date.now();
   const startMs = endMs - DAYS * 86_400_000;
 
-  // Fetch data
-  console.log(`📥 Fetching ${SYMBOLS.length} symbols, ${DAYS} days of data...`);
-  const allKlines: Record<string, Kline[]> = {};
-  for (const sym of SYMBOLS) {
-    const klines = await fetchHistoricalKlines(sym, "1h", startMs, endMs);
-    allKlines[sym] = klines;
-    console.log(`   ${sym} ✓ ${klines.length} bars`);
-  }
+  // Fetch data (parallel)
+  console.log(`📥 Fetching ${SYMBOLS.length} symbols, ${DAYS} days of data (parallel)...`);
+  const allKlines = await fetchAllSymbols(SYMBOLS, "1h", startMs, endMs, {
+    onProgress: (sym, n) => console.log(`   ${sym} ✓ ${n} bars`),
+  });
 
   // ── A. Fixed parameter backtest ──
   console.log("\n🔄 Mode A: Fixed parameter backtest...");

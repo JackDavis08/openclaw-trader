@@ -10,7 +10,7 @@
  */
 
 import { loadStrategyConfig, loadStrategyProfile } from "../config/loader.js";
-import { fetchHistoricalKlines } from "../backtest/fetcher.js";
+import { fetchAllSymbols } from "../backtest/parallel-fetch.js";
 import { runBacktest } from "../backtest/runner.js";
 import {
   walkForwardSingle,
@@ -21,7 +21,7 @@ import {
   formatMonteCarloReport,
 } from "../backtest/walk-forward.js";
 import type { SensitivityParam } from "../backtest/walk-forward.js";
-import type { StrategyConfig, Kline } from "../types.js";
+import type { StrategyConfig } from "../types.js";
 
 // ─── Argument Parsing ──────────────────────────────────────────
 
@@ -69,17 +69,14 @@ async function main() {
 
   console.log(`\n🔬 Strategy Reliability Analysis: ${strategyArg ?? "default"} | ${days} days of history\n`);
 
-  // Pre-fetch klines
-  console.log("📡 Fetching historical data...");
+  // Pre-fetch klines (parallel)
+  console.log("📡 Fetching historical data (parallel)...");
   const now = Date.now();
   const startMs = now - days * 24 * 3600 * 1000;
-  const allKlines: Record<string, Kline[]> = {};
 
-  for (const symbol of symbols) {
-    const klines = await fetchHistoricalKlines(symbol, cfg.timeframe, startMs, now);
-    allKlines[symbol] = klines;
-    console.log(`  ${symbol}: ${klines.length} candlesticks`);
-  }
+  const allKlines = await fetchAllSymbols(symbols, cfg.timeframe, startMs, now, {
+    onProgress: (symbol, n) => console.log(`  ${symbol}: ${n} candlesticks`),
+  });
 
   const sep = "─".repeat(50);
 
@@ -88,8 +85,8 @@ async function main() {
     console.log(`\n${sep}`);
     console.log("📊 Walk-Forward Validation (5 folds)\n");
 
-    const wfResults = symbols.map((sym) =>
-walkForwardSingle(allKlines[sym] ?? [], cfg, sym, 5, 0.7)
+    const wfResults = await Promise.all(
+      symbols.map((sym) => walkForwardSingle(allKlines[sym] ?? [], cfg, sym, 5, 0.7))
     );
     console.log(formatWalkForwardReport(wfResults));
 
@@ -113,7 +110,7 @@ walkForwardSingle(allKlines[sym] ?? [], cfg, sym, 5, 0.7)
     const params = getDefaultParams(sensParam);
 
     for (const param of params) {
-      const report = runSensitivity(klines, cfg, sym, param);
+      const report = await runSensitivity(klines, cfg, sym, param);
       console.log(formatSensitivityReport(report));
       console.log("");
     }

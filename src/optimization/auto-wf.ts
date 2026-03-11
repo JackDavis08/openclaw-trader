@@ -9,7 +9,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { parse, stringify } from "yaml";
-import { fetchHistoricalKlines } from "../backtest/fetcher.js";
+import { fetchAllSymbols } from "../backtest/parallel-fetch.js";
 import { loadStrategyConfig } from "../config/loader.js";
 import { BayesianOptimizer, splitKlines } from "../optimization/bayesian.js";
 import { evaluateParams, applyParams } from "../optimization/objective.js";
@@ -167,100 +167,105 @@ export async function runAutoWalkForward(
   baseCfg?: StrategyConfig
 ): Promise<AutoWfReport> {
   const stratCfg = baseCfg ?? loadStrategyConfig();
-  const results: SymbolWfResult[] = [];
 
-  for (const symbol of cfg.symbols) {
-    try {
-      // ── 1. Fetch kline data ────────────────────────────
-      const endMs = Date.now();
-      const startMs = endMs - cfg.days * 86_400_000;
-      const klines: Kline[] = await fetchHistoricalKlines(
-        symbol,
-        stratCfg.timeframe,
-        startMs,
-        endMs
-      );
+  // ── Pre-fetch all symbols in parallel ──────────────
+  const endMs = Date.now();
+  const startMs = endMs - cfg.days * 86_400_000;
+  const allKlines = await fetchAllSymbols(cfg.symbols, stratCfg.timeframe, startMs, endMs);
 
-      // ── 2. Data split ──────────────────────────────────
-      const { train, test } = splitKlines(klines, cfg.trainRatio);
+  // ── Run optimization per symbol (parallel across symbols) ──
+  const results = await Promise.all(
+    cfg.symbols.map(async (symbol): Promise<SymbolWfResult> => {
+      try {
+        const klines = allKlines[symbol] ?? [];
+        if (klines.length === 0) {
+          return {
+            symbol, currentSharpe: 0, newSharpe: 0, improvementPct: 0,
+            bestParams: {}, updated: false, error: "No kline data fetched",
+          };
+        }
 
-      // ── 3. Current params performance on test set ─────
-      const currentParams: ParamSet = {
-        ma_short: stratCfg.strategy.ma.short,
-        ma_long: stratCfg.strategy.ma.long,
-        rsi_period: stratCfg.strategy.rsi.period,
-        rsi_overbought: stratCfg.strategy.rsi.overbought,
-        rsi_oversold: stratCfg.strategy.rsi.oversold,
-        stop_loss_pct: stratCfg.risk.stop_loss_percent,
-        take_profit_pct: stratCfg.risk.take_profit_percent,
-        position_ratio: stratCfg.risk.position_ratio,
-      };
-      const testCache = new Map<string, Kline[]>([[symbol, test]]);
-      const { metrics: currentMetrics } = await evaluateParams(
-        currentParams,
-        symbol,
-        stratCfg,
-        testCache
-      );
-      const currentSharpe = currentMetrics.sharpeRatio;
+        // ── 2. Data split ──────────────────────────────────
+        const { train, test } = splitKlines(klines, cfg.trainRatio);
 
-      // ── 4. Run Bayesian optimization on train set ─────
-      const trainCache = new Map<string, Kline[]>([[symbol, train]]);
-      const warmup = Math.min(20, Math.floor(cfg.trials * 0.2));
-      const optimizer = new BayesianOptimizer(DEFAULT_PARAM_SPACE, cfg.seed, warmup);
+        // ── 3. Current params performance on test set ─────
+        const currentParams: ParamSet = {
+          ma_short: stratCfg.strategy.ma.short,
+          ma_long: stratCfg.strategy.ma.long,
+          rsi_period: stratCfg.strategy.rsi.period,
+          rsi_overbought: stratCfg.strategy.rsi.overbought,
+          rsi_oversold: stratCfg.strategy.rsi.oversold,
+          stop_loss_pct: stratCfg.risk.stop_loss_percent,
+          take_profit_pct: stratCfg.risk.take_profit_percent,
+          position_ratio: stratCfg.risk.position_ratio,
+        };
+        const testCache = new Map<string, Kline[]>([[symbol, test]]);
+        const { metrics: currentMetrics } = await evaluateParams(
+          currentParams,
+          symbol,
+          stratCfg,
+          testCache
+        );
+        const currentSharpe = currentMetrics.sharpeRatio;
 
-      for (let i = 0; i < cfg.trials; i++) {
-        const params = optimizer.suggest();
-        const { score } = await evaluateParams(params, symbol, stratCfg, trainCache);
-        optimizer.observe(params, score);
+        // ── 4. Run Bayesian optimization on train set ─────
+        const trainCache = new Map<string, Kline[]>([[symbol, train]]);
+        const warmup = Math.min(20, Math.floor(cfg.trials * 0.2));
+        const optimizer = new BayesianOptimizer(DEFAULT_PARAM_SPACE, cfg.seed, warmup);
+
+        for (let i = 0; i < cfg.trials; i++) {
+          const params = optimizer.suggest();
+          const { score } = await evaluateParams(params, symbol, stratCfg, trainCache);
+          optimizer.observe(params, score);
+        }
+
+        const best = optimizer.best();
+        const bestParams: ParamSet = best?.params ?? currentParams;
+
+        // ── 5. Validate best params on test set ────────────
+        const newTestCache = new Map<string, Kline[]>([[symbol, test]]);
+        const { metrics: newMetrics } = await evaluateParams(
+          bestParams,
+          symbol,
+          stratCfg,
+          newTestCache
+        );
+        const newSharpe = newMetrics.sharpeRatio;
+
+        // ── 6. Calculate improvement ──────────────────────
+        const denominator = Math.abs(currentSharpe) > 0 ? Math.abs(currentSharpe) : 1;
+        const improvementPct = ((newSharpe - currentSharpe) / denominator) * 100;
+
+        // ── 7. Decision: whether to update config ─────────
+        const shouldUpdate =
+          improvementPct >= cfg.minImprovementPct && newSharpe > 0 && !cfg.dryRun;
+
+        if (shouldUpdate) {
+          updateConfigFile(bestParams, stratCfg);
+        }
+
+        return {
+          symbol,
+          currentSharpe,
+          newSharpe,
+          improvementPct,
+          bestParams,
+          updated: shouldUpdate,
+        };
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        return {
+          symbol,
+          currentSharpe: 0,
+          newSharpe: 0,
+          improvementPct: 0,
+          bestParams: {},
+          updated: false,
+          error: errorMsg,
+        };
       }
-
-      const best = optimizer.best();
-      const bestParams: ParamSet = best?.params ?? currentParams;
-
-      // ── 5. Validate best params on test set ────────────
-      const newTestCache = new Map<string, Kline[]>([[symbol, test]]);
-      const { metrics: newMetrics } = await evaluateParams(
-        bestParams,
-        symbol,
-        stratCfg,
-        newTestCache
-      );
-      const newSharpe = newMetrics.sharpeRatio;
-
-      // ── 6. Calculate improvement ──────────────────────
-      const denominator = Math.abs(currentSharpe) > 0 ? Math.abs(currentSharpe) : 1;
-      const improvementPct = ((newSharpe - currentSharpe) / denominator) * 100;
-
-      // ── 7. Decision: whether to update config ─────────
-      const shouldUpdate =
-        improvementPct >= cfg.minImprovementPct && newSharpe > 0 && !cfg.dryRun;
-
-      if (shouldUpdate) {
-        updateConfigFile(bestParams, stratCfg);
-      }
-
-      results.push({
-        symbol,
-        currentSharpe,
-        newSharpe,
-        improvementPct,
-        bestParams,
-        updated: shouldUpdate,
-      });
-    } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      results.push({
-        symbol,
-        currentSharpe: 0,
-        newSharpe: 0,
-        improvementPct: 0,
-        bestParams: {},
-        updated: false,
-        error: errorMsg,
-      });
-    }
-  }
+    })
+  );
 
   const updatedCount = results.filter((r) => r.updated).length;
   const failedCount = results.filter((r) => r.error !== undefined).length;

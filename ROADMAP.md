@@ -64,6 +64,15 @@
 - [x] **总亏损保护** — 超限暂停入场, 退出仍正常执行
 - [x] **Stablecoin 信号** — 链上数据每小时刷新 (与 live-monitor 共享缓存文件)
 
+## v0.10 — Backtest Performance Optimization ✅
+
+- [x] **Parallel API fetch** — `fetchAllSymbols()` with async semaphore (concurrency=3), different symbols fetched concurrently while respecting Binance rate limits
+- [x] **Worker Thread pool** — `BacktestWorkerPool` for parallel `runBacktest()` execution across strategies/parameter combos, small-job optimization (1 job → direct call)
+- [x] **In-memory kline cache** — `KlineCache` wraps `fetchHistoricalKlines` with `Map` cache, `getAll()` uses parallel fetch for cold-cache misses
+- [x] **Consumer script upgrades** — `backtest.ts` (runOne/runCompare/runSlippageSweep), `analyze-strategy.ts`, `regime-backtest.ts` all use parallel fetch
+- [x] **Walk-forward/sensitivity async** — `walkForwardSingle()` and `runSensitivity()` now async with optional worker pool parameter
+- [x] **Auto-wf parallelism** — Pre-fetches all symbols before optimization loop, cross-symbol parallelism via `Promise.all()`
+
 ### 待规划
 
 #### 第二交易所集成
@@ -72,13 +81,6 @@
   - 新增 `src/exchange/okx.ts` implements `IExchange`
   - YAML 中 `exchange.name: "okx"` 即可切换
   - 统一 REST + WS 接口映射
-
-#### 回测性能优化
-- **目标**: 大规模回测 (1000+ 组合) 提速
-- **实现**:
-  - Worker Threads 并行回测
-  - 内存缓存 kline 数据 (避免重复文件 I/O)
-  - 增量式 walk-forward (仅重跑变动窗口)
 
 ---
 

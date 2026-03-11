@@ -19,8 +19,10 @@
  *   --slippage-sweep    Slippage sensitivity analysis (run 0 / 0.05 / 0.1 / 0.2% and compare)
  */
 
-import { fetchHistoricalKlines } from "../backtest/fetcher.js";
+import { fetchAllSymbols } from "../backtest/parallel-fetch.js";
+import { KlineCache } from "../backtest/kline-cache.js";
 import { runBacktest } from "../backtest/runner.js";
+import { BacktestWorkerPool, type BacktestJob } from "../backtest/worker-pool.js";
 import { formatReport, saveReport } from "../backtest/report.js";
 import { parseBacktestArgs, type BacktestCliArgs } from "../backtest/cli-args.js";
 import {
@@ -104,32 +106,17 @@ async function runOne(strategyId: string | undefined, args: BacktestCliArgs): Pr
   const endMs = Date.now();
   const startMs = endMs - args.days * 86_400_000;
 
-  // Fetch historical candlesticks
-  console.log(`\n📥 Fetching historical data...`);
-  const klinesBySymbol: Record<string, Kline[]> = {};
-
-  for (const symbol of cfg.symbols) {
-    process.stdout.write(`   ${symbol}... `);
-    const klines = await fetchHistoricalKlines(symbol, cfg.timeframe, startMs, endMs, (n) =>
-      process.stdout.write(`\r   ${symbol}... ${n} bars`)
-    );
-    process.stdout.write(`\r   ${symbol} ✓ ${klines.length} candlesticks\n`);
-    klinesBySymbol[symbol] = klines;
-  }
+  // Fetch historical candlesticks (parallel)
+  console.log(`\n📥 Fetching historical data (parallel)...`);
+  const klinesBySymbol = await fetchAllSymbols(cfg.symbols, cfg.timeframe, startMs, endMs, {
+    onProgress: (symbol, n) => console.log(`   ${symbol} ✓ ${n} candlesticks`),
+  });
 
   // Optional: MTF trend candlesticks (if trend_timeframe is configured)
   let trendKlinesBySymbol: Record<string, Kline[]> | undefined;
   if (cfg.trend_timeframe) {
     console.log(`\n📥 Fetching trend timeframe candlesticks (${cfg.trend_timeframe})...`);
-    trendKlinesBySymbol = {};
-    for (const symbol of cfg.symbols) {
-      trendKlinesBySymbol[symbol] = await fetchHistoricalKlines(
-        symbol,
-        cfg.trend_timeframe,
-        startMs,
-        endMs
-      );
-    }
+    trendKlinesBySymbol = await fetchAllSymbols(cfg.symbols, cfg.trend_timeframe, startMs, endMs);
     console.log(`   ✓ MTF ${cfg.trend_timeframe} data loaded`);
   }
 
@@ -168,76 +155,110 @@ async function runCompare(args: BacktestCliArgs): Promise<void> {
 
   console.log(`\n🔬 Strategy comparison mode: ${strategies.join("  |  ")}\n`);
 
-  const results: {
-    strategy: string;
-    returnPct: number;
-    sharpe: number;
-    maxDD: number;
-    trades: number;
-    winRate: number;
-  }[] = [];
+  const endMs = Date.now();
+  const startMs = endMs - args.days * 86_400_000;
+  const cache = new KlineCache();
 
-  for (const strategyId of strategies) {
-    const cfg = buildBacktestConfig(strategyId, {
-      timeframe: args.timeframe,
-      symbols: args.symbols,
-    });
+  // Pre-fetch all unique symbol/timeframe combos using cache (parallel)
+  const allConfigs = strategies.map((id) => ({
+    id,
+    cfg: buildBacktestConfig(id, { timeframe: args.timeframe, symbols: args.symbols }),
+  }));
 
-    const endMs = Date.now();
-    const startMs = endMs - args.days * 86_400_000;
-
-    console.log(`⏳ Backtesting: ${strategyId}${cfg.trend_timeframe ? ` (MTF:${cfg.trend_timeframe})` : ""}...`);
-    const klinesBySymbol: Record<string, Kline[]> = {};
-
-    for (const symbol of cfg.symbols) {
-      klinesBySymbol[symbol] = await fetchHistoricalKlines(symbol, cfg.timeframe, startMs, endMs);
+  // Collect all unique symbol+timeframe combos for pre-fetching
+  const fetchSet = new Set<string>();
+  for (const { cfg } of allConfigs) {
+    for (const sym of cfg.symbols) {
+      fetchSet.add(`${sym}|${cfg.timeframe}`);
+      if (cfg.trend_timeframe) fetchSet.add(`${sym}|${cfg.trend_timeframe}`);
     }
+  }
+  console.log(`📥 Pre-fetching ${fetchSet.size} symbol/timeframe combos (parallel)...`);
+  const byTf = new Map<string, string[]>();
+  for (const key of fetchSet) {
+    const [sym, tf] = key.split("|") as [string, string];
+    if (!byTf.has(tf)) byTf.set(tf, []);
+    byTf.get(tf)!.push(sym);
+  }
+  for (const [tf, syms] of byTf) {
+    await cache.getAll(syms, tf, startMs, endMs);
+  }
+  console.log(`   ✓ All data cached\n`);
 
-    let trendKlines: Record<string, Kline[]> | undefined;
-    if (cfg.trend_timeframe) {
-      trendKlines = {};
-      for (const symbol of cfg.symbols) {
-        trendKlines[symbol] = await fetchHistoricalKlines(symbol, cfg.trend_timeframe, startMs, endMs);
+  // Build worker pool and submit all strategies in parallel
+  const pool = new BacktestWorkerPool();
+  try {
+    const jobs: BacktestJob[] = [];
+    for (const { cfg } of allConfigs) {
+      const klinesBySymbol: Record<string, Kline[]> = {};
+      for (const sym of cfg.symbols) {
+        klinesBySymbol[sym] = await cache.get(sym, cfg.timeframe, startMs, endMs);
       }
+      let trendKlines: Record<string, Kline[]> | undefined;
+      if (cfg.trend_timeframe) {
+        trendKlines = {};
+        for (const sym of cfg.symbols) {
+          trendKlines[sym] = await cache.get(sym, cfg.trend_timeframe, startMs, endMs);
+        }
+      }
+      jobs.push({
+        klinesBySymbol,
+        cfg,
+        opts: { initialUsdt: args.initialUsdt },
+        trendKlinesBySymbol: trendKlines,
+      });
     }
 
-    const result = runBacktest(klinesBySymbol, cfg, {
-      initialUsdt: args.initialUsdt,
-    }, trendKlines);
+    console.log(`🔄 Running ${jobs.length} backtests in parallel...`);
+    const btResults = await pool.submitAll(jobs);
 
-    const m = result.metrics;
-    results.push({
-      strategy: strategyId,
-      returnPct: m.totalReturnPercent,
-      sharpe: m.sharpeRatio,
-      maxDD: m.maxDrawdown,
-      trades: m.totalTrades,
-      winRate: m.winRate * 100,
-    });
+    const results: {
+      strategy: string;
+      returnPct: number;
+      sharpe: number;
+      maxDD: number;
+      trades: number;
+      winRate: number;
+    }[] = [];
 
-    if (args.save) saveReport(result, strategyId);
-  }
+    for (let i = 0; i < allConfigs.length; i++) {
+      const { id } = allConfigs[i]!;
+      const result = btResults[i]!;
+      const m = result.metrics;
+      results.push({
+        strategy: id,
+        returnPct: m.totalReturnPercent,
+        sharpe: m.sharpeRatio,
+        maxDD: m.maxDrawdown,
+        trades: m.totalTrades,
+        winRate: m.winRate * 100,
+      });
+      if (args.save) saveReport(result, id);
+    }
 
-  // Comparison table
-  console.log("\n");
-  console.log("━".repeat(72));
-  console.log("📊 Strategy Comparison Results");
-  console.log("━".repeat(72));
-  console.log(
-    `${"Strategy".padEnd(22)} ${"Return".padStart(9)} ${"Sharpe".padStart(7)} ${"Max DD".padStart(9)} ${"Trades".padStart(6)} ${"WinRate".padStart(7)}`
-  );
-  console.log("─".repeat(72));
-
-  // Sort by return
-  results.sort((a, b) => b.returnPct - a.returnPct);
-  for (const r of results) {
-    const sign = r.returnPct >= 0 ? "+" : "";
-    const emoji = r.returnPct > 5 ? "🟢" : r.returnPct > 0 ? "🟡" : "🔴";
+    // Comparison table
+    console.log("\n");
+    console.log("━".repeat(72));
+    console.log("📊 Strategy Comparison Results");
+    console.log("━".repeat(72));
     console.log(
-      `${emoji} ${r.strategy.padEnd(20)} ${(sign + r.returnPct.toFixed(2) + "%").padStart(9)} ${r.sharpe.toFixed(2).padStart(7)} ${("-" + r.maxDD.toFixed(2) + "%").padStart(9)} ${String(r.trades).padStart(6)} ${(r.winRate.toFixed(1) + "%").padStart(7)}`
+      `${"Strategy".padEnd(22)} ${"Return".padStart(9)} ${"Sharpe".padStart(7)} ${"Max DD".padStart(9)} ${"Trades".padStart(6)} ${"WinRate".padStart(7)}`
     );
+    console.log("─".repeat(72));
+
+    // Sort by return
+    results.sort((a, b) => b.returnPct - a.returnPct);
+    for (const r of results) {
+      const sign = r.returnPct >= 0 ? "+" : "";
+      const emoji = r.returnPct > 5 ? "🟢" : r.returnPct > 0 ? "🟡" : "🔴";
+      console.log(
+        `${emoji} ${r.strategy.padEnd(20)} ${(sign + r.returnPct.toFixed(2) + "%").padStart(9)} ${r.sharpe.toFixed(2).padStart(7)} ${("-" + r.maxDD.toFixed(2) + "%").padStart(9)} ${String(r.trades).padStart(6)} ${(r.winRate.toFixed(1) + "%").padStart(7)}`
+      );
+    }
+    console.log("━".repeat(72));
+  } finally {
+    await pool.terminate();
   }
-  console.log("━".repeat(72));
 }
 
 // ─────────────────────────────────────────────────────
@@ -259,27 +280,27 @@ async function runSlippageSweep(args: BacktestCliArgs): Promise<void> {
   const endMs = Date.now();
   const startMs = endMs - args.days * 86_400_000;
 
-  console.log(`\n📥 Fetching historical candlesticks (${cfg.symbols.join(",")} × ${cfg.timeframe})...`);
-  const klinesBySymbol: Record<string, Kline[]> = {};
-  for (const symbol of cfg.symbols) {
-    klinesBySymbol[symbol] = await fetchHistoricalKlines(symbol, cfg.timeframe, startMs, endMs);
-  }
+  console.log(`\n📥 Fetching historical candlesticks (${cfg.symbols.join(",")} × ${cfg.timeframe}, parallel)...`);
+  const klinesBySymbol = await fetchAllSymbols(cfg.symbols, cfg.timeframe, startMs, endMs);
 
   let trendKlines: Record<string, Kline[]> | undefined;
   if (cfg.trend_timeframe) {
-    trendKlines = {};
-    for (const symbol of cfg.symbols) {
-      trendKlines[symbol] = await fetchHistoricalKlines(
-        symbol,
-        cfg.trend_timeframe,
-        startMs,
-        endMs
-      );
-    }
+    trendKlines = await fetchAllSymbols(cfg.symbols, cfg.trend_timeframe, startMs, endMs);
   }
 
   console.log(`\n🔬 Slippage Sensitivity Analysis — Strategy: ${cfg.strategy.name}  |  ${args.days} days`);
   console.log(`   Standard slippage (market order): 0.05%  |  Fee: 0.1%`);
+
+  const pool = new BacktestWorkerPool();
+  const slipJobs: BacktestJob[] = SLIPPAGE_LEVELS.map((slip) => ({
+    klinesBySymbol,
+    cfg,
+    opts: { initialUsdt: args.initialUsdt, feeRate: 0.001, slippagePercent: slip },
+    trendKlinesBySymbol: trendKlines,
+  }));
+
+  const btResults = await pool.submitAll(slipJobs);
+  await pool.terminate();
 
   const results: {
     slippage: number;
@@ -290,14 +311,10 @@ async function runSlippageSweep(args: BacktestCliArgs): Promise<void> {
     totalReturn: number;
   }[] = [];
 
-  for (const slip of SLIPPAGE_LEVELS) {
-    const result = runBacktest(klinesBySymbol, cfg, {
-      initialUsdt: args.initialUsdt,
-      feeRate: 0.001,
-      slippagePercent: slip,
-    }, trendKlines);
+  for (let i = 0; i < SLIPPAGE_LEVELS.length; i++) {
+    const result = btResults[i]!;
     results.push({
-      slippage: slip,
+      slippage: SLIPPAGE_LEVELS[i]!,
       returnPct: result.metrics.totalReturnPercent,
       maxDD: result.metrics.maxDrawdown,
       trades: result.metrics.totalTrades,

@@ -11,6 +11,7 @@
  */
 
 import { runBacktest } from "./runner.js";
+import type { BacktestWorkerPool, BacktestJob } from "./worker-pool.js";
 import type { StrategyConfig, Kline } from "../types.js";
 
 // ─── Type Definitions ──────────────────────────────────────────
@@ -64,49 +65,74 @@ export interface SensitivityReport {
  * @param symbol     Trading pair
  * @param folds      Number of folds (default 5)
  * @param trainRatio Training set ratio per fold (default 0.7 = 70% train, 30% validate)
+ * @param pool       Optional worker pool for parallel fold execution
  */
-export function walkForwardSingle(
+export async function walkForwardSingle(
   klines: Kline[],
   cfg: StrategyConfig,
   symbol: string,
   folds = 5,
-  trainRatio = 0.7
-): WalkForwardResult {
+  trainRatio = 0.7,
+  pool?: BacktestWorkerPool
+): Promise<WalkForwardResult> {
   const foldSize = Math.floor(klines.length / folds);
   const trainSize = Math.floor(foldSize * folds * trainRatio);
   const testSize = foldSize;
   const singleCfg = { ...cfg, symbols: [symbol] };
 
-  const foldResults: WalkForwardFold[] = [];
-
-  // Rolling window: advance by one fold each iteration
+  // Collect valid fold data
+  const validFolds: { index: number; trainKlines: Kline[]; testKlines: Kline[] }[] = [];
   for (let i = 0; i < folds - 1; i++) {
     const trainEnd = trainSize + i * testSize;
     const testEnd = trainEnd + testSize;
-
     if (testEnd > klines.length) break;
-
     const trainKlines = klines.slice(0, trainEnd);
     const testKlines = klines.slice(trainEnd, testEnd);
-
     if (trainKlines.length < 60 || testKlines.length < 10) continue;
+    validFolds.push({ index: i, trainKlines, testKlines });
+  }
 
-    const trainResult = runBacktest({ [symbol]: trainKlines }, singleCfg);
-    const testResult = runBacktest({ [symbol]: testKlines }, singleCfg);
+  const foldResults: WalkForwardFold[] = [];
 
-    const inReturn = trainResult.metrics.totalReturnPercent;
-    const oosReturn = testResult.metrics.totalReturnPercent;
-
-    foldResults.push({
-      foldIndex: i,
-      trainBars: trainKlines.length,
-      testBars: testKlines.length,
-      inSampleReturn: inReturn,
-      outOfSampleReturn: oosReturn,
-      outOfSampleSharpe: testResult.metrics.sharpeRatio,
-      outOfSampleTrades: testResult.metrics.totalTrades,
-      outOfSampleWinRate: testResult.metrics.winRate,
-    });
+  if (pool && validFolds.length > 1) {
+    // Build jobs: train+test per fold
+    const jobs: BacktestJob[] = [];
+    for (const f of validFolds) {
+      jobs.push({ klinesBySymbol: { [symbol]: f.trainKlines }, cfg: singleCfg });
+      jobs.push({ klinesBySymbol: { [symbol]: f.testKlines }, cfg: singleCfg });
+    }
+    const results = await pool.submitAll(jobs);
+    for (let i = 0; i < validFolds.length; i++) {
+      const fold = validFolds[i]!;
+      const trainResult = results[i * 2]!;
+      const testResult = results[i * 2 + 1]!;
+      foldResults.push({
+        foldIndex: fold.index,
+        trainBars: fold.trainKlines.length,
+        testBars: fold.testKlines.length,
+        inSampleReturn: trainResult.metrics.totalReturnPercent,
+        outOfSampleReturn: testResult.metrics.totalReturnPercent,
+        outOfSampleSharpe: testResult.metrics.sharpeRatio,
+        outOfSampleTrades: testResult.metrics.totalTrades,
+        outOfSampleWinRate: testResult.metrics.winRate,
+      });
+    }
+  } else {
+    // Sequential execution (no pool or single fold)
+    for (const fold of validFolds) {
+      const trainResult = runBacktest({ [symbol]: fold.trainKlines }, singleCfg);
+      const testResult = runBacktest({ [symbol]: fold.testKlines }, singleCfg);
+      foldResults.push({
+        foldIndex: fold.index,
+        trainBars: fold.trainKlines.length,
+        testBars: fold.testKlines.length,
+        inSampleReturn: trainResult.metrics.totalReturnPercent,
+        outOfSampleReturn: testResult.metrics.totalReturnPercent,
+        outOfSampleSharpe: testResult.metrics.sharpeRatio,
+        outOfSampleTrades: testResult.metrics.totalTrades,
+        outOfSampleWinRate: testResult.metrics.winRate,
+      });
+    }
   }
 
   const avgOOS = foldResults.length > 0
@@ -155,34 +181,64 @@ export interface SensitivityParam {
  * @param baseCfg Base config
  * @param symbol  Trading pair
  * @param param   Parameter to vary
+ * @param pool    Optional worker pool for parallel execution
  */
-export function runSensitivity(
+export async function runSensitivity(
   klines: Kline[],
   baseCfg: StrategyConfig,
   symbol: string,
-  param: SensitivityParam
-): SensitivityReport {
-  const results: SensitivityResult[] = [];
+  param: SensitivityParam,
+  pool?: BacktestWorkerPool
+): Promise<SensitivityReport> {
   const singleCfg = { ...baseCfg, symbols: [symbol] };
 
+  // Build config variants
+  const configs: { value: number; cfg: StrategyConfig }[] = [];
   for (const value of param.values) {
     const cfg = deepSetPath(
       JSON.parse(JSON.stringify(singleCfg)) as StrategyConfig,
       param.path,
       value
     );
-    try {
-      const result = runBacktest({ [symbol]: klines }, cfg);
-      results.push({
-        paramName: param.name,
-        paramValue: value,
-        totalReturnPct: result.metrics.totalReturnPercent,
-        sharpe: result.metrics.sharpeRatio,
-        maxDrawdown: result.metrics.maxDrawdown,
-        totalTrades: result.metrics.totalTrades,
-      });
-    } catch {
-      // Invalid parameter, skip
+    configs.push({ value, cfg });
+  }
+
+  const results: SensitivityResult[] = [];
+
+  if (pool && configs.length > 1) {
+    const jobs: BacktestJob[] = configs.map((c) => ({
+      klinesBySymbol: { [symbol]: klines },
+      cfg: c.cfg,
+    }));
+    const btResults = await pool.submitAll(jobs);
+    for (let i = 0; i < configs.length; i++) {
+      const result = btResults[i];
+      if (result) {
+        results.push({
+          paramName: param.name,
+          paramValue: configs[i]!.value,
+          totalReturnPct: result.metrics.totalReturnPercent,
+          sharpe: result.metrics.sharpeRatio,
+          maxDrawdown: result.metrics.maxDrawdown,
+          totalTrades: result.metrics.totalTrades,
+        });
+      }
+    }
+  } else {
+    for (const { value, cfg } of configs) {
+      try {
+        const result = runBacktest({ [symbol]: klines }, cfg);
+        results.push({
+          paramName: param.name,
+          paramValue: value,
+          totalReturnPct: result.metrics.totalReturnPercent,
+          sharpe: result.metrics.sharpeRatio,
+          maxDrawdown: result.metrics.maxDrawdown,
+          totalTrades: result.metrics.totalTrades,
+        });
+      } catch {
+        // Invalid parameter, skip
+      }
     }
   }
 

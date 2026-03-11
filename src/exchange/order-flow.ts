@@ -101,6 +101,9 @@ export class CvdManager {
   private ws: InstanceType<typeof WebSocket> | null = null;
   private state: Record<string, CvdEntry> = {};
   private flushIntervalId: ReturnType<typeof setInterval> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectDelayMs = 1_000;
+  private static readonly MAX_RECONNECT_DELAY_MS = 30_000;
 
   constructor(
     symbols: string[],
@@ -119,6 +122,7 @@ export class CvdManager {
   }
 
   stop(): void {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.flushIntervalId) clearInterval(this.flushIntervalId);
     if (this.ws) this.ws.close();
     this._flush();
@@ -161,13 +165,19 @@ export class CvdManager {
       } catch { /* Ignore parse errors */ }
     });
 
+    this.ws.addEventListener("open", () => {
+      this.reconnectDelayMs = 1_000; // reset on successful connection
+    });
+
     this.ws.addEventListener("error", () => {
-      log.error("WebSocket error, reconnecting in 3s...");
+      log.error("WebSocket error");
     });
 
     this.ws.addEventListener("close", () => {
-      log.warn("Connection closed, reconnecting in 5s...");
-      setTimeout(() => { this._connect(); }, 5_000);
+      const delay = this.reconnectDelayMs;
+      log.warn(`Connection closed, reconnecting in ${(delay / 1000).toFixed(0)}s...`);
+      this.reconnectTimer = setTimeout(() => { this.reconnectTimer = null; this._connect(); }, delay);
+      this.reconnectDelayMs = Math.min(delay * 2, CvdManager.MAX_RECONNECT_DELAY_MS);
     });
   }
 
@@ -203,8 +213,14 @@ export class CvdManager {
   }
 
   private _flush(): void {
-    for (const entry of Object.values(this.state)) {
-      writeCvdEntry(entry);
-    }
+    // Batch write: single JSON.stringify + writeFileSync instead of per-symbol read-modify-write
+    try {
+      const cache: CvdCache = {};
+      for (const entry of Object.values(this.state)) {
+        cache[entry.symbol] = entry;
+      }
+      fs.mkdirSync(path.dirname(CVD_CACHE_PATH), { recursive: true });
+      fs.writeFileSync(CVD_CACHE_PATH, JSON.stringify(cache, null, 2));
+    } catch { /* ignore flush errors */ }
   }
 }

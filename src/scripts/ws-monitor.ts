@@ -66,6 +66,9 @@ import { createLogger } from "../logger.js";
 import { applyParams } from "../optimization/objective.js";
 import { getOrCreateAdaptiveManager } from "../optimization/adaptive.js";
 import type { AdaptiveManager } from "../optimization/adaptive.js";
+import { getStrategy } from "../strategies/registry.js";
+import { createStateStore } from "../strategies/state-store.js";
+import type { Strategy, StrategyContext } from "../strategies/types.js";
 import type { RuntimeConfig, Signal, Indicators, Kline } from "../types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -109,6 +112,22 @@ const _signalNotifyCooldown = new Map<string, number>();
 
 let _stablecoinSignal: "accumulation" | "distribution" | "neutral" | undefined;
 let _stablecoinSignalFetchedAt = 0;
+
+const STALE_MAP_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+/** Periodically clean up stale entries in module-level Maps */
+function cleanupStaleMaps(): void {
+  const cutoff = Date.now() - STALE_MAP_MAX_AGE_MS;
+  for (const [key, ts] of _totalLossNotifyAt) {
+    if (ts < cutoff) _totalLossNotifyAt.delete(key);
+  }
+  for (const [key, ts] of _filteredCooldown) {
+    if (ts < cutoff) _filteredCooldown.delete(key);
+  }
+  for (const [key, ts] of _signalNotifyCooldown) {
+    if (ts < cutoff) _signalNotifyCooldown.delete(key);
+  }
+}
 
 // ─────────────────────────────────────────────────────
 // State Persistence
@@ -603,10 +622,26 @@ async function checkExits(
   const sid = cfg.paper.scenarioId;
   const state = loadState(sid);
 
+  // Resolve strategy plugin (for shouldExit/customStoploss/adjustPosition hooks)
+  let strategy: Strategy | undefined;
+  let strategyCtx: StrategyContext | undefined;
+  const strategyId = cfg.strategy_id ?? "default";
+  if (strategyId !== "default") {
+    try {
+      strategy = getStrategy(strategyId);
+      strategyCtx = {
+        klines: [],
+        cfg,
+        indicators: { maShort: 0, maLong: 0, rsi: 0, price: 0, volume: 0, avgVolume: 0 },
+        stateStore: createStateStore(strategyId, "global"),
+      };
+    } catch { /* strategy not found: continue without plugin */ }
+  }
+
   // Snapshot account before exit processing (to read signalHistoryId)
   const accountSnapshot = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
 
-  const exits = checkExitConditions(currentPrices, cfg);
+  const exits = checkExitConditions(currentPrices, cfg, strategy, strategyCtx);
   for (const { symbol, trade, reason, pnlPercent } of exits) {
     const emoji = reason === "take_profit" ? "🎯" : "🚨";
     const label =
@@ -660,7 +695,7 @@ async function checkExits(
 
   // ── DCA tranche check ─────────────────────────────────────
   if (cfg.risk.dca?.enabled) {
-    const dcaResults = checkDcaTranches(currentPrices, cfg);
+    const dcaResults = checkDcaTranches(currentPrices, cfg, strategy, strategyCtx);
     for (const { symbol, trade, tranche, totalTranches } of dcaResults) {
       log.info(`[${sid}] ${symbol}: 💰 DCA tranche ${tranche}/${totalTranches} @${trade.price.toFixed(4)} (${trade.usdtAmount.toFixed(2)} USDT)`);
       notifyPaperTrade(trade, loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId));
@@ -682,17 +717,21 @@ async function checkExits(
   }
 
   // ── Portfolio exposure + equity snapshot ─────────────────────
+  const accForExp = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
+  const posWeights = buildPositionWeights(accForExp, currentPrices);
+  const totalEquity = accForExp.usdt + posWeights.reduce((s, pw) => s + pw.notionalUsdt, 0);
+
   try {
-    const accForExp = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
-    const posWeights = buildPositionWeights(accForExp, currentPrices);
-    const totalEquity = accForExp.usdt + posWeights.reduce((s, pw) => s + pw.notionalUsdt, 0);
     if (Object.keys(accForExp.positions).length > 0) {
       const klinesBySymbol: Record<string, Kline[]> = {};
-      // No kline buffer access here — use prices only for exposure summary
       const exposure = calcPortfolioExposure(posWeights, totalEquity, klinesBySymbol);
       log.info(`[${sid}] ${formatPortfolioExposure(exposure).replace(/\*\*/g, "")}`);
     }
+  } catch (e: unknown) { log.warn(`[${sid}] Portfolio exposure failed: ${e instanceof Error ? e.message : String(e)}`); }
+
+  try {
     recordEquitySnapshot(sid, totalEquity, Object.keys(accForExp.positions).length);
+  } catch (e: unknown) { log.warn(`[${sid}] Equity snapshot failed: ${e instanceof Error ? e.message : String(e)}`); }
 
     // ── v0.8 Portfolio rebalancing ─────────────────────────────
     if (cfg.rebalance?.enabled) {
@@ -744,7 +783,6 @@ async function checkExits(
         }
       } catch (e: unknown) { log.warn(`[${sid}] Rebalance check failed: ${e instanceof Error ? e.message : String(e)}`); }
     }
-  } catch { /* exposure summary failure does not affect main flow */ }
 
   // Periodic account report
   const intervalMs = cfg.paper.report_interval_hours * 3600000;
@@ -916,7 +954,7 @@ async function main(): Promise<void> {
 
   // ── Stop-loss/Take-profit Polling (every 60s) ────────────────────────────
   const EXIT_POLL_MS = 60 * 1000;
-  setInterval(() => {
+  const exitPollId = setInterval(() => {
     void ping("ws_monitor");
 
     // BTC crash detection (from WS price buffer — no REST)
@@ -938,9 +976,14 @@ async function main(): Promise<void> {
     }
   }, EXIT_POLL_MS);
 
+  // ── Hourly stale Map cleanup ─────────────────────────────────
+  const cleanupId = setInterval(cleanupStaleMaps, 60 * 60 * 1000);
+
   // ── Graceful Shutdown ─────────────────────────────────────────
   function shutdown(signal: string): void {
     log.info(`Received ${signal}, shutting down...`);
+    clearInterval(exitPollId);
+    clearInterval(cleanupId);
     wsManager.stop();
     cvdManager?.stop();
     process.exit(0);

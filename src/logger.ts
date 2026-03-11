@@ -39,6 +39,31 @@ function getMinLevel(): number {
   return LEVEL_PRIORITY[env as LogLevel] ?? LEVEL_PRIORITY.info;
 }
 
+// ── Buffered WriteStream pool ──────────────────────────────
+const _streams = new Map<string, fs.WriteStream>();
+
+function getStream(filePath: string): fs.WriteStream {
+  let stream = _streams.get(filePath);
+  if (stream && !stream.destroyed) return stream;
+  stream = fs.createWriteStream(filePath, { flags: "a" });
+  _streams.set(filePath, stream);
+  return stream;
+}
+
+/** Flush all open log streams (call during shutdown) */
+export function flushAllLogs(): Promise<void> {
+  const promises: Promise<void>[] = [];
+  for (const [, stream] of _streams) {
+    if (!stream.destroyed) {
+      promises.push(new Promise<void>((resolve) => {
+        stream.end(resolve);
+      }));
+    }
+  }
+  _streams.clear();
+  return Promise.all(promises).then(() => {});
+}
+
 export function createLogger(module: string, logFilePath?: string): Logger {
   const minLevel = getMinLevel();
 
@@ -56,7 +81,7 @@ export function createLogger(module: string, logFilePath?: string): Logger {
     }
 
     if (logFilePath) {
-      fs.appendFileSync(logFilePath, line + "\n");
+      getStream(logFilePath).write(line + "\n");
     }
   }
 

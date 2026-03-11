@@ -14,8 +14,19 @@ function cacheKey(symbol: string, interval: string, startMs: number, endMs: numb
   return `${symbol}|${interval}|${startMs}|${endMs}`;
 }
 
+const MAX_ENTRIES = 500;
+
 export class KlineCache {
   private cache = new Map<string, Kline[]>();
+
+  /** Evict oldest entries when cache exceeds MAX_ENTRIES */
+  private _evictIfNeeded(): void {
+    while (this.cache.size > MAX_ENTRIES) {
+      const firstKey = this.cache.keys().next().value;
+      if (firstKey !== undefined) this.cache.delete(firstKey);
+      else break;
+    }
+  }
 
   /** Check if data is cached for the given key */
   has(symbol: string, interval: string, startMs: number, endMs: number): boolean {
@@ -25,6 +36,7 @@ export class KlineCache {
   /** Set cached klines for a specific key */
   set(symbol: string, interval: string, startMs: number, endMs: number, klines: Kline[]): void {
     this.cache.set(cacheKey(symbol, interval, startMs, endMs), klines);
+    this._evictIfNeeded();
   }
 
   /**
@@ -42,6 +54,7 @@ export class KlineCache {
 
     const klines = await fetchHistoricalKlines(symbol, interval, startMs, endMs);
     this.cache.set(key, klines);
+    this._evictIfNeeded();
     return klines;
   }
 
@@ -74,6 +87,7 @@ export class KlineCache {
         this.cache.set(cacheKey(symbol, interval, startMs, endMs), klines);
         result[symbol] = klines;
       }
+      this._evictIfNeeded();
     }
 
     return result;

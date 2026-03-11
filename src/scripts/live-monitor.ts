@@ -112,6 +112,22 @@ const btcPriceBuffer: number[] = [];
 const _totalLossNotifyAt = new Map<string, number>();
 const TOTAL_LOSS_NOTIFY_COOLDOWN_MS = 30 * 60_000;
 
+const STALE_MAP_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+/** Periodically clean up stale entries in module-level Maps */
+function cleanupStaleMaps(): void {
+  const cutoff = Date.now() - STALE_MAP_MAX_AGE_MS;
+  for (const [key, ts] of _totalLossNotifyAt) {
+    if (ts < cutoff) _totalLossNotifyAt.delete(key);
+  }
+  for (const [key, ts] of _filteredCooldown) {
+    if (ts < cutoff) _filteredCooldown.delete(key);
+  }
+  for (const [key, ts] of _signalNotifyCooldown) {
+    if (ts < cutoff) _signalNotifyCooldown.delete(key);
+  }
+}
+
 // ── Graceful shutdown flag (wrapped in object to avoid no-unnecessary-condition false positive) ──
 const _state = { shuttingDown: false };
 
@@ -592,6 +608,18 @@ async function checkExits(cfg: RuntimeConfig, executor?: LiveExecutor): Promise<
   const accountSnapshot = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
   const exits = await execInstance.checkExitConditions(prices);
 
+  // DCA tranche check (symmetric with monitor.ts / ws-monitor.ts)
+  if (cfg.risk.dca?.enabled) {
+    try {
+      const dcaResults = await execInstance.checkDcaTranches(prices);
+      for (const { symbol, side, usdtAmount } of dcaResults) {
+        log.info(`${label} ${symbol}: 💰 DCA ${side} $${usdtAmount.toFixed(2)}`);
+      }
+    } catch (e: unknown) {
+      log.warn(`${label} DCA check failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   // G3: Check timed-out orders each round (orphan entry orders cancelled, orphan exit orders cancelled and re-triggered next round)
   // Must reload account after checkExitConditions to avoid overwriting closed position state with stale snapshot
   const freshAccount = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
@@ -1001,6 +1029,9 @@ async function main(): Promise<void> {
         log.error(`❌ Scenario ${cfg.paper.scenarioId} runtime error: ${msg}`);
       }
     }
+
+    // Periodic stale Map cleanup (runs every loop iteration, only clears entries > 2h old)
+    cleanupStaleMaps();
 
     if (_state.shuttingDown) break; // eslint-disable-line @typescript-eslint/no-unnecessary-condition
     log.info(`⏰ Waiting ${POLL_INTERVAL_MS / 1000}s before next round...`);

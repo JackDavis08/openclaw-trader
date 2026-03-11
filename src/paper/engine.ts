@@ -166,7 +166,7 @@ export function handleSignal(signal: Signal, cfg: RuntimeConfig): PaperEngineRes
             source: "paper",
           });
           newPos.signalHistoryId = sigId;
-        } catch { /* does not affect main flow */ }
+        } catch (e: unknown) { log.warn(`Signal history log failed: ${e instanceof Error ? e.message : String(e)}`); }
 
         // ── G5: SQLite persistence (optional) ──
         if (cfg.paper.use_sqlite === true && trade) {
@@ -182,7 +182,7 @@ export function handleSignal(signal: Signal, cfg: RuntimeConfig): PaperEngineRes
               newPos.takeProfit,
               trade.timestamp
             );
-          } catch { /* SQLite failure does not affect main flow */ }
+          } catch (e: unknown) { log.warn(`SQLite insert failed: ${e instanceof Error ? e.message : String(e)}`); }
         }
 
         // ── Initialize DCA state (if configured) ──
@@ -211,7 +211,7 @@ export function handleSignal(signal: Signal, cfg: RuntimeConfig): PaperEngineRes
       paperOpts(cfg)
     );
     if (trade && sigHistId) {
-      try { closeSignal(sigHistId, signal.price, "signal", trade.pnl); } catch { /* skip */ }
+      try { closeSignal(sigHistId, signal.price, "signal", trade.pnl); } catch (e: unknown) { log.warn(`Signal history close failed: ${e instanceof Error ? e.message : String(e)}`); }
     }
   } else if (signal.type === "short") {
     // ── Open short (only valid on futures / margin markets) ──
@@ -292,7 +292,7 @@ export function handleSignal(signal: Signal, cfg: RuntimeConfig): PaperEngineRes
             source: "paper",
           });
           newShortPos.signalHistoryId = sigId;
-        } catch { /* does not affect main flow */ }
+        } catch (e: unknown) { log.warn(`Signal history log failed: ${e instanceof Error ? e.message : String(e)}`); }
 
         // ── G5: SQLite persistence (optional) ──
         if (cfg.paper.use_sqlite === true && trade) {
@@ -308,7 +308,7 @@ export function handleSignal(signal: Signal, cfg: RuntimeConfig): PaperEngineRes
               newShortPos.takeProfit,
               trade.timestamp
             );
-          } catch { /* SQLite failure does not affect main flow */ }
+          } catch (e: unknown) { log.warn(`SQLite insert failed: ${e instanceof Error ? e.message : String(e)}`); }
         }
       }
     }
@@ -324,7 +324,7 @@ export function handleSignal(signal: Signal, cfg: RuntimeConfig): PaperEngineRes
       paperOpts(cfg)
     );
     if (trade && sigHistIdCover) {
-      try { closeSignal(sigHistIdCover, signal.price, "signal", trade.pnl); } catch { /* skip */ }
+      try { closeSignal(sigHistIdCover, signal.price, "signal", trade.pnl); } catch (e: unknown) { log.warn(`Signal history close failed: ${e instanceof Error ? e.message : String(e)}`); }
     }
   }
 
@@ -582,7 +582,7 @@ export function checkExitConditions(
         triggered.push({ symbol, trade, reason: exitReason, pnlPercent });
         // Write back to signal history
         if (sigHistId) {
-          try { closeSignal(sigHistId, currentPrice, exitReason, trade.pnl); } catch { /* skip */ }
+          try { closeSignal(sigHistId, currentPrice, exitReason, trade.pnl); } catch (e: unknown) { log.warn(`Signal history close failed: ${e instanceof Error ? e.message : String(e)}`); }
         }
         // ── G5: SQLite persistence (optional) ──
         if (cfg.paper.use_sqlite === true && posDbId !== undefined) {
@@ -597,7 +597,7 @@ export function checkExitConditions(
               exitReason === "take_profit",
               Date.now()
             );
-          } catch { /* SQLite failure does not affect main flow */ }
+          } catch (e: unknown) { log.warn(`SQLite close failed: ${e instanceof Error ? e.message : String(e)}`); }
         }
       }
       continue;
@@ -766,7 +766,7 @@ export function checkDcaTranches(
 
     const trade = paperDcaAdd(account, symbol, currentPrice, `DCA tranche ${dca.completedTranches + 1} (drop ${dropPct.toFixed(1)}%)`, {
       addUsdt,
-      feeRate: cfg.execution.order_type === "market" ? 0.001 : 0.001,
+      feeRate: cfg.paper?.fee_rate ?? 0.001,
     });
 
     if (trade) {

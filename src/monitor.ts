@@ -49,6 +49,9 @@ import { computeRebalanceOrders, shouldRebalance } from "./strategy/rebalance.js
 import { applyParams } from "./optimization/objective.js";
 import { getOrCreateAdaptiveManager } from "./optimization/adaptive.js";
 import type { AdaptiveManager } from "./optimization/adaptive.js";
+import { getStrategy } from "./strategies/registry.js";
+import { createStateStore } from "./strategies/state-store.js";
+import type { Strategy, StrategyContext } from "./strategies/types.js";
 import type { RuntimeConfig, Signal, Indicators, Kline } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -497,6 +500,22 @@ async function runScenario(cfg: RuntimeConfig): Promise<void> {
 
   // Stop-loss / take-profit / trailing-stop check
   if (Object.keys(currentPrices).length > 0) {
+    // Resolve strategy plugin (for shouldExit/customStoploss/adjustPosition hooks)
+    let strategy: Strategy | undefined;
+    let strategyCtx: StrategyContext | undefined;
+    const strategyId = cfg.strategy_id ?? "default";
+    if (strategyId !== "default") {
+      try {
+        strategy = getStrategy(strategyId);
+        strategyCtx = {
+          klines: [],
+          cfg,
+          indicators: { maShort: 0, maLong: 0, rsi: 0, price: 0, volume: 0, avgVolume: 0 },
+          stateStore: createStateStore(strategyId, "global"),
+        };
+      } catch { /* strategy not found: continue without plugin */ }
+    }
+
     // Snapshot adaptive arm IDs before exits close positions
     const preExitAccount = loadAccount(cfg.paper.initial_usdt, sid);
     const armIdSnapshot: Record<string, string | undefined> = {};
@@ -504,7 +523,7 @@ async function runScenario(cfg: RuntimeConfig): Promise<void> {
       armIdSnapshot[sym] = pos.adaptiveArmId;
     }
 
-    const exits = checkExitConditions(currentPrices, cfg);
+    const exits = checkExitConditions(currentPrices, cfg, strategy, strategyCtx);
     for (const { symbol, trade, reason, pnlPercent } of exits) {
       const emoji = reason === "take_profit" ? "🎯" : "🚨";
       const label =
@@ -547,7 +566,7 @@ async function runScenario(cfg: RuntimeConfig): Promise<void> {
 
     // ── DCA tranche check ─────────────────────────────────────
     if (cfg.risk.dca?.enabled) {
-      const dcaResults = checkDcaTranches(currentPrices, cfg);
+      const dcaResults = checkDcaTranches(currentPrices, cfg, strategy, strategyCtx);
       for (const { symbol, trade, tranche, totalTranches } of dcaResults) {
         log.info(`${prefix}${symbol}: 💰 DCA tranche ${tranche}/${totalTranches} @${trade.price.toFixed(4)} (${trade.usdtAmount.toFixed(2)} USDT)`);
         notifyPaperTrade(trade, loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId));
@@ -586,10 +605,12 @@ async function runScenario(cfg: RuntimeConfig): Promise<void> {
   }
 
   // P7.1 Portfolio exposure summary log (output when positions exist, aids risk monitoring)
+  const accForExp = loadAccount(cfg.paper.initial_usdt, sid);
+  const posWeights = buildPositionWeights(accForExp, { ...currentPrices });
+  const totalEquity = accForExp.usdt + posWeights.reduce((s, pw) => s + pw.notionalUsdt, 0);
+
+  // Portfolio exposure
   try {
-    const accForExp = loadAccount(cfg.paper.initial_usdt, sid);
-    const posWeights = buildPositionWeights(accForExp, { ...currentPrices });
-    const totalEquity = accForExp.usdt + posWeights.reduce((s, pw) => s + pw.notionalUsdt, 0);
     if (Object.keys(accForExp.positions).length > 0) {
       const klinesBySymbol: Record<string, Kline[]> = {};
       for (const sym of cfg.symbols) {
@@ -599,56 +620,58 @@ async function runScenario(cfg: RuntimeConfig): Promise<void> {
       const exposure = calcPortfolioExposure(posWeights, totalEquity, klinesBySymbol);
       log.info(`[${sid}] ${formatPortfolioExposure(exposure).replace(/\*\*/g, "")}`);
     }
-    // Record equity snapshot (rate-limited to 1 per hour internally)
+  } catch (e: unknown) { log.warn(`[${sid}] Portfolio exposure failed: ${e instanceof Error ? e.message : String(e)}`); }
+
+  // Equity snapshot
+  try {
     recordEquitySnapshot(sid, totalEquity, Object.keys(accForExp.positions).length);
+  } catch (e: unknown) { log.warn(`[${sid}] Equity snapshot failed: ${e instanceof Error ? e.message : String(e)}`); }
 
-    // ── v0.8 Portfolio rebalancing ─────────────────────────────
-    if (cfg.rebalance?.enabled) {
+  // ── v0.8 Portfolio rebalancing ─────────────────────────────
+  if (cfg.rebalance?.enabled) {
+    try {
+      const rebalanceStatePath = path.resolve(__dirname, `../logs/rebalance-state-${sid}.json`);
+      let lastRebalanceAt = 0;
       try {
-        const rebalanceStatePath = path.resolve(__dirname, `../logs/rebalance-state-${sid}.json`);
-        let lastRebalanceAt = 0;
-        try {
-          const rs = JSON.parse(fs.readFileSync(rebalanceStatePath, "utf-8")) as { lastRebalanceAt: number };
-          lastRebalanceAt = rs.lastRebalanceAt ?? 0;
-        } catch { /* first run */ }
+        const rs = JSON.parse(fs.readFileSync(rebalanceStatePath, "utf-8")) as { lastRebalanceAt: number };
+        lastRebalanceAt = rs.lastRebalanceAt ?? 0;
+      } catch { /* first run */ }
 
-        if (shouldRebalance(cfg.rebalance, lastRebalanceAt)) {
-          const posNotionals: Record<string, number> = {};
-          for (const [sym, pos] of Object.entries(accForExp.positions)) {
-            posNotionals[sym] = pos.quantity * (currentPrices[sym] ?? pos.entryPrice);
-          }
-          const result = computeRebalanceOrders(cfg.rebalance, posNotionals, currentPrices, totalEquity);
-          if (result.rebalanceNeeded) {
-            log.info(`[${sid}] Rebalance: ${result.reason}`);
-            for (const order of result.orders) {
-              log.info(`[${sid}] Rebalance ${order.action.toUpperCase()} ${order.symbol}: $${order.amountUsdt.toFixed(2)} (${(order.currentWeight * 100).toFixed(1)}% → ${(order.targetWeight * 100).toFixed(1)}%)`);
-              if (order.action === "buy") {
-                const signal: Signal = {
-                  symbol: order.symbol, type: "buy", price: currentPrices[order.symbol] ?? 0,
-                  indicators: { maShort: 0, maLong: 0, rsi: 50, price: currentPrices[order.symbol] ?? 0, volume: 0, avgVolume: 0 },
-                  reason: [`rebalance: underweight by ${(Math.abs(order.deviation) * 100).toFixed(1)}%`],
-                  timestamp: Date.now(),
-                };
-                const adjustedCfg = { ...cfg, risk: { ...cfg.risk, position_ratio: order.amountUsdt / totalEquity } };
-                handleSignal(signal, adjustedCfg);
-              } else {
-                // For sells, use handleSignal with sell signal
-                const signal: Signal = {
-                  symbol: order.symbol, type: "sell", price: currentPrices[order.symbol] ?? 0,
-                  indicators: { maShort: 0, maLong: 0, rsi: 50, price: currentPrices[order.symbol] ?? 0, volume: 0, avgVolume: 0 },
-                  reason: [`rebalance: overweight by ${(order.deviation * 100).toFixed(1)}%`],
-                  timestamp: Date.now(),
-                };
-                handleSignal(signal, cfg);
-              }
-            }
-            fs.mkdirSync(path.dirname(rebalanceStatePath), { recursive: true });
-            fs.writeFileSync(rebalanceStatePath, JSON.stringify({ lastRebalanceAt: Date.now() }));
-          }
+      if (shouldRebalance(cfg.rebalance, lastRebalanceAt)) {
+        const posNotionals: Record<string, number> = {};
+        for (const [sym, pos] of Object.entries(accForExp.positions)) {
+          posNotionals[sym] = pos.quantity * (currentPrices[sym] ?? pos.entryPrice);
         }
-      } catch (e: unknown) { log.warn(`[${sid}] Rebalance check failed: ${e instanceof Error ? e.message : String(e)}`); }
-    }
-  } catch { /* exposure summary failure doesn't affect main flow */ }
+        const result = computeRebalanceOrders(cfg.rebalance, posNotionals, currentPrices, totalEquity);
+        if (result.rebalanceNeeded) {
+          log.info(`[${sid}] Rebalance: ${result.reason}`);
+          for (const order of result.orders) {
+            log.info(`[${sid}] Rebalance ${order.action.toUpperCase()} ${order.symbol}: $${order.amountUsdt.toFixed(2)} (${(order.currentWeight * 100).toFixed(1)}% → ${(order.targetWeight * 100).toFixed(1)}%)`);
+            if (order.action === "buy") {
+              const signal: Signal = {
+                symbol: order.symbol, type: "buy", price: currentPrices[order.symbol] ?? 0,
+                indicators: { maShort: 0, maLong: 0, rsi: 50, price: currentPrices[order.symbol] ?? 0, volume: 0, avgVolume: 0 },
+                reason: [`rebalance: underweight by ${(Math.abs(order.deviation) * 100).toFixed(1)}%`],
+                timestamp: Date.now(),
+              };
+              const adjustedCfg = { ...cfg, risk: { ...cfg.risk, position_ratio: order.amountUsdt / totalEquity } };
+              handleSignal(signal, adjustedCfg);
+            } else {
+              const signal: Signal = {
+                symbol: order.symbol, type: "sell", price: currentPrices[order.symbol] ?? 0,
+                indicators: { maShort: 0, maLong: 0, rsi: 50, price: currentPrices[order.symbol] ?? 0, volume: 0, avgVolume: 0 },
+                reason: [`rebalance: overweight by ${(order.deviation * 100).toFixed(1)}%`],
+                timestamp: Date.now(),
+              };
+              handleSignal(signal, cfg);
+            }
+          }
+          fs.mkdirSync(path.dirname(rebalanceStatePath), { recursive: true });
+          fs.writeFileSync(rebalanceStatePath, JSON.stringify({ lastRebalanceAt: Date.now() }));
+        }
+      }
+    } catch (e: unknown) { log.warn(`[${sid}] Rebalance check failed: ${e instanceof Error ? e.message : String(e)}`); }
+  }
 
   saveState(sid, state);
 }

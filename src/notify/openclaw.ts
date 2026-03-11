@@ -44,11 +44,12 @@ const _errorLastNotified = new Map<string, number>();
 /** Inject system event into OpenClaw main session, trigger AI agent decision */
 function sendToAgent(message: string): void {
   try {
-    // Use argument array to avoid shell parsing of $ signs
     const args = ["system", "event", "--mode", "now"];
-    if (GATEWAY_TOKEN) args.push("--token", GATEWAY_TOKEN);
     args.push("--text", message);
-    const result = spawnSync(OPENCLAW_BIN, args, { encoding: "utf-8", timeout: 15000 });
+    // Pass GATEWAY_TOKEN via environment variable (not CLI argument) to avoid token leaking in process lists
+    const env = { ...process.env };
+    if (GATEWAY_TOKEN) env["OPENCLAW_GATEWAY_TOKEN"] = GATEWAY_TOKEN;
+    const result = spawnSync(OPENCLAW_BIN, args, { encoding: "utf-8", timeout: 15000, env });
     if (result.status !== 0 && result.stderr) {
       console.error("sendToAgent failed:", result.stderr.slice(0, 200));
     }

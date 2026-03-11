@@ -279,6 +279,8 @@ export class BinanceClient implements IExchange {
   private readonly accountPrefix: string;  // /api/v3 or /fapi/v2 (Futures account uses v2)
   private readonly market: "spot" | "futures";
   private readonly creds: BinanceCredentials;
+  private readonly _symbolInfoCache = new Map<string, { info: SymbolInfo; cachedAt: number }>();
+  private static readonly SYMBOL_INFO_TTL_MS = 3_600_000; // 1 hour
 
   /**
    * @param credentialsPath  JSON file path containing { apiKey, secretKey }
@@ -335,8 +337,13 @@ export class BinanceClient implements IExchange {
     }));
   }
 
-  /** Get symbol info (precision, minimum order size, etc.) */
+  /** Get symbol info (precision, minimum order size, etc.) — cached for 1 hour */
   async getSymbolInfo(symbol: string): Promise<SymbolInfo> {
+    const cached = this._symbolInfoCache.get(symbol);
+    if (cached && Date.now() - cached.cachedAt < BinanceClient.SYMBOL_INFO_TTL_MS) {
+      return cached.info;
+    }
+
     const path = `${this.apiPrefix}/exchangeInfo?symbol=${symbol}`;
     const res = (await httpsRequestWithRetry(this.hostname, "GET", path, {})) as {
       symbols: {
@@ -357,7 +364,7 @@ export class BinanceClient implements IExchange {
       info.filters.find((f) => f.filterType === "NOTIONAL");
     const priceFilter = info.filters.find((f) => f.filterType === "PRICE_FILTER");
 
-    return {
+    const result: SymbolInfo = {
       symbol: info.symbol,
       baseAsset: info.baseAsset,
       quoteAsset: info.quoteAsset,
@@ -369,6 +376,9 @@ export class BinanceClient implements IExchange {
       pricePrecision: info.quotePrecision,
       quantityPrecision: info.baseAssetPrecision,
     };
+
+    this._symbolInfoCache.set(symbol, { info: result, cachedAt: Date.now() });
+    return result;
   }
 
   /** Round price to tickSize (prevent PRICE_FILTER error) */

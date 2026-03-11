@@ -1400,7 +1400,7 @@ state.refreshInterval = setInterval(fetchAll, 10000);
 let server: http.Server | null = null;
 
 function sendJson(res: http.ServerResponse, data: unknown, status = 200): void {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" });
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(data));
 }
 
@@ -1408,11 +1408,23 @@ function sendError(res: http.ServerResponse, msg: string, status = 500): void {
   sendJson(res, { error: msg }, status);
 }
 
+const MAX_BODY_SIZE = 1_048_576; // 1 MB
+
 function parseBody<T>(req: http.IncomingMessage): Promise<T> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
+    let totalSize = 0;
     const timer = setTimeout(() => reject(new Error("Body read timeout")), 10_000);
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("data", (chunk: Buffer) => {
+      totalSize += chunk.length;
+      if (totalSize > MAX_BODY_SIZE) {
+        clearTimeout(timer);
+        reject(new Error("Request body too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
     req.on("end", () => {
       clearTimeout(timer);
       try {
@@ -1467,14 +1479,27 @@ export function startDashboardServer(port = 8080): void {
     }
 
     // CORS headers
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    const corsOrigin = process.env["DASHBOARD_CORS_ORIGIN"] ?? "http://localhost:3000";
+    res.setHeader("Access-Control-Allow-Origin", corsOrigin);
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+    // Security headers
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("X-Content-Type-Options", "nosniff");
 
     if (method === "OPTIONS") {
       res.writeHead(204);
       res.end();
       return;
+    }
+
+    // Write operations (PUT/POST) require authentication even if dashboardAuth is not set
+    if ((method === "PUT" || method === "POST") && !dashboardAuth) {
+      if (pathname.startsWith("/api/")) {
+        sendError(res, "Authentication required for write operations", 403);
+        return;
+      }
     }
 
     // ── Routes ──
@@ -1515,7 +1540,7 @@ export function startDashboardServer(port = 8080): void {
     }
 
     if (pathname === "/api/logs") {
-      const tail = parseInt(url.searchParams.get("tail") ?? "200", 10) || 200;
+      const tail = Math.min(Math.max(parseInt(url.searchParams.get("tail") ?? "200", 10) || 200, 1), 2000);
       try {
         const lines = getLogLines(tail);
         sendJson(res, { lines, file: "monitor.log", tail });
@@ -1704,6 +1729,21 @@ export function startDashboardServer(port = 8080): void {
         }
 
         const { symbol, side, amountUsdt, scenarioId, stopLossPercent, takeProfitPercent } = body;
+
+        // Input validation
+        if (!symbol || typeof symbol !== "string" || !/^[A-Z0-9]{2,20}$/.test(symbol)) {
+          sendError(res, "Invalid symbol format", 400);
+          return;
+        }
+        if (side !== "buy" && side !== "short") {
+          sendError(res, "Invalid side: must be 'buy' or 'short'", 400);
+          return;
+        }
+        if (typeof amountUsdt !== "number" || amountUsdt <= 0 || amountUsdt > 1_000_000) {
+          sendError(res, "Invalid amountUsdt: must be a positive number <= 1,000,000", 400);
+          return;
+        }
+
         const account = loadAccount(undefined, scenarioId);
 
         if (account.positions[symbol]) {
@@ -1841,7 +1881,7 @@ export function startDashboardServer(port = 8080): void {
 
     if (configStratMatch && method === "PUT") {
       const file = configStratMatch["file"]!;
-      if (file.includes("..") || !file.endsWith(".yaml")) {
+      if (file.includes("..") || !file.endsWith(".yaml") || !/^[a-zA-Z0-9_-]+\.yaml$/.test(file)) {
         sendError(res, `Not allowed: ${file}`, 403);
         return;
       }
@@ -1918,14 +1958,20 @@ export function startDashboardServer(port = 8080): void {
           signalToNextOpen?: boolean;
         }>(req);
 
-        const days = body.days ?? 90;
+        const days = Math.min(body.days ?? 90, 365);
         const initialUsdt = body.initialUsdt ?? 1000;
         const spreadBps = body.spreadBps ?? 0;
         const signalToNextOpen = body.signalToNextOpen ?? false;
 
         const overrides: { timeframe?: string; symbols?: string[] } = {};
         if (body.timeframe !== undefined) overrides.timeframe = body.timeframe;
-        if (body.symbols !== undefined) overrides.symbols = body.symbols;
+        if (body.symbols !== undefined) {
+          if (body.symbols.length > 20) {
+            sendError(res, "Too many symbols: maximum 20 allowed", 400);
+            return;
+          }
+          overrides.symbols = body.symbols;
+        }
         const cfg = buildBacktestConfig(body.strategy, overrides);
 
         const endMs = Date.now();

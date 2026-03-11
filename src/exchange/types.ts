@@ -111,8 +111,8 @@ export interface IExchange {
   // ── Orders ──
   createOrder(req: ExchangeOrderRequest): Promise<ExchangeOrderResponse>;
   marketBuy(symbol: string, usdtAmount: number): Promise<ExchangeOrderResponse>;
-  marketSell(symbol: string, quantity: number): Promise<ExchangeOrderResponse>;
-  marketBuyByQty(symbol: string, quantity: number): Promise<ExchangeOrderResponse>;
+  marketSell(symbol: string, quantity: number, reduceOnly?: boolean): Promise<ExchangeOrderResponse>;
+  marketBuyByQty(symbol: string, quantity: number, reduceOnly?: boolean): Promise<ExchangeOrderResponse>;
   placeStopLossOrder(
     symbol: string,
     side: OrderSide,

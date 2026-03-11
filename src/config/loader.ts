@@ -41,6 +41,9 @@ export function loadLiveConfig(): LiveConfig {
 }
 
 export function loadStrategyProfile(strategyId: string): StrategyProfile {
+  if (/[^a-zA-Z0-9_-]/.test(strategyId)) {
+    throw new Error(`Invalid strategy ID: "${strategyId}" (only alphanumeric, hyphen, underscore allowed)`);
+  }
   const filePath = path.join(CONFIG_DIR, "strategies", `${strategyId}.yaml`);
   if (!fs.existsSync(filePath)) {
     throw new Error(`Strategy file not found: config/strategies/${strategyId}.yaml`);
@@ -83,6 +86,9 @@ export function mergeRisk(
         : {}),
       ...(result.correlation_filter !== undefined || override.correlation_filter !== undefined
         ? ({ correlation_filter: { ...result.correlation_filter, ...override.correlation_filter } } as Pick<RiskConfig, "correlation_filter">)
+        : {}),
+      ...(result.dca !== undefined || override.dca !== undefined
+        ? ({ dca: { ...result.dca, ...override.dca } } as Pick<RiskConfig, "dca">)
         : {}),
     };
   }

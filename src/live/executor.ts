@@ -478,20 +478,40 @@ export class LiveExecutor {
       ? order.fills.reduce((s, f) => s + parseFloat(f.price) * parseFloat(f.qty), 0) / parseFloat(order.executedQty)
       : signal.price;
 
-    const execQty = parseFloat(order.executedQty);
+    const label = this.isTestnet ? "[TESTNET]" : "[LIVE]";
+
+    // Binance Futures Testnet quirk: MARKET orders return executedQty="0" and fills=[]
+    // even when the order actually executes on the exchange. Detect this case and fall back
+    // to the requested qty so the position is recorded correctly.
+    const reportedQty = parseFloat(order.executedQty);
+    const isFuturesTestnetZeroFill =
+      this.isTestnet &&
+      this.cfg.exchange.market === "futures" &&
+      reportedQty === 0 &&
+      order.orderId != null;
+
+    let execQty: number;
+    if (isFuturesTestnetZeroFill) {
+      console.warn(
+        `${label} ℹ️ Futures testnet quirk: ${signal.symbol} MARKET short returned 0 fills ` +
+        `(orderId=${order.orderId}). Using requested qty=${qty.toFixed(6)} as fallback.`
+      );
+      execQty = qty;
+    } else {
+      execQty = reportedQty;
+    }
+
     const totalFee = order.fills?.reduce((s, f) => s + parseFloat(f.commission), 0) ?? 0;
     const actualMargin = marginToLock - totalFee;
 
     // F2: Partial fill detection
     const sFillRatio = execQty / (qty || 1);
-    if (sFillRatio < 0.95) {
-      const label = this.isTestnet ? "[TESTNET]" : "[LIVE]";
+    if (!isFuturesTestnetZeroFill && sFillRatio < 0.95) {
       console.warn(`${label} ⚠️ Short partial fill ${signal.symbol}: requested ${qty.toFixed(6)}, filled ${execQty.toFixed(6)} (${(sFillRatio * 100).toFixed(1)}%)`);
     }
 
-    // 🛡️ Zero fill protection: exchange accepted order but no fills (testnet low liquidity etc.), skip position record
+    // 🛡️ Zero fill protection: real exchange accepted order but truly no fills
     if (execQty === 0) {
-      const label = this.isTestnet ? "[TESTNET]" : "[LIVE]";
       console.warn(`${label} ⚠️ Short ${signal.symbol} order 0 fills, skipping position record (orderId=${order.orderId})`);
       return {
         trade: null,
@@ -547,7 +567,6 @@ export class LiveExecutor {
     cleanupOrders(account);
     saveAccount(account, this.scenarioId);
 
-    const label = this.isTestnet ? "[TESTNET]" : "[LIVE]";
     const slLabel = shortExchangeSlOrderId !== null ? `SL order#${shortExchangeSlOrderId}` : "SL order(placement failed, local polling fallback)";
     console.log(`${label} Short ${signal.symbol}: qty=${execQty.toFixed(6)}, avgPrice=$${avgPrice.toFixed(4)}, fee=$${totalFee.toFixed(4)}, ${slLabel}`);
 

@@ -748,11 +748,11 @@ export function runBacktest(
   }
 
   // ── signalToNextOpen: pending signal queue (produced by previous candle, executed at next candle open) ──
-  type PendingSignal = {
+  interface PendingSignal {
     type: "buy" | "sell" | "short" | "cover";
     reason: string[];
     regimeCfg: StrategyConfig;
-  };
+  }
   const pendingSignals: Record<string, PendingSignal> = {};
 
   // ── Main loop: advance candle by candle ──
@@ -771,6 +771,7 @@ export function runBacktest(
           doSell(account, sym, execPrice, time, "signal", legacyOpts);
         } else if (pending.type === "short") {
           doOpenShort(account, sym, execPrice, time, pending.regimeCfg, legacyOpts, pending.reason);
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- exhaustive check, future types may be added
         } else if (pending.type === "cover") {
           doCoverShort(account, sym, execPrice, time, "signal", legacyOpts);
         }

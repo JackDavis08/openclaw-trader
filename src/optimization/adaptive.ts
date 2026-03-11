@@ -296,14 +296,14 @@ export class AdaptiveManager {
     totalTrades: number;
     tradesSinceRefresh: number;
     activeArmId: string;
-    arms: Array<{
+    arms: {
       id: string;
       trades: number;
       winRate: string;
       avgPnl: string;
       alpha: number;
       beta: number;
-    }>;
+    }[];
   } {
     return {
       scenarioId: this.scenarioId,

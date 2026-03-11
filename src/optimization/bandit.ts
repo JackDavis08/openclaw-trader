@@ -131,7 +131,7 @@ export function selectArm(
     }
   }
 
-  return bestArm!;
+  return bestArm;
 }
 
 // ─────────────────────────────────────────────────────

@@ -75,7 +75,7 @@ async function main() {
   const startMs = now - days * 24 * 3600 * 1000;
 
   const allKlines = await fetchAllSymbols(symbols, cfg.timeframe, startMs, now, {
-    onProgress: (symbol, n) => console.log(`  ${symbol}: ${n} candlesticks`),
+    onProgress: (symbol, n) => { console.log(`  ${symbol}: ${n} candlesticks`); },
   });
 
   const sep = "─".repeat(50);

@@ -41,7 +41,7 @@ async function main() {
       signals: { ...baseCfg.signals, ...profile.signals },
       risk: { ...baseCfg.risk, ...profile.risk } as StrategyConfig["risk"],
     };
-    console.log(`📋 Using strategy: ${strategyId} (${profile.name ?? strategyId})\n`);
+    console.log(`📋 Using strategy: ${strategyId} (${profile.name})\n`);
   }
   const SYMBOLS = baseCfg.symbols;
   const endMs = Date.now();
@@ -50,7 +50,7 @@ async function main() {
   // Fetch data (parallel)
   console.log(`📥 Fetching ${SYMBOLS.length} symbols, ${DAYS} days of data (parallel)...`);
   const allKlines = await fetchAllSymbols(SYMBOLS, "1h", startMs, endMs, {
-    onProgress: (sym, n) => console.log(`   ${sym} ✓ ${n} bars`),
+    onProgress: (sym, n) => { console.log(`   ${sym} ✓ ${n} bars`); },
   });
 
   // ── A. Fixed parameter backtest ──

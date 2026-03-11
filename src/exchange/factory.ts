@@ -9,7 +9,8 @@ import { BinanceClient } from "./binance-client.js";
 export function createExchange(config: ExchangeConfig): IExchange {
   const name = config.name ?? "binance";
 
-  switch (name) {
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- future-proof: more exchanges will be added
+  switch (name as string) {
     case "binance": {
       const credsPath = config.credentials_path ?? ".secrets/binance.json";
       const testnet = config.testnet ?? false;
@@ -17,6 +18,7 @@ export function createExchange(config: ExchangeConfig): IExchange {
       return new BinanceClient(credsPath, testnet, market);
     }
     default:
+      // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- intentional fallthrough
       throw new Error(`Unsupported exchange: "${name}". Currently supported: binance`);
   }
 }

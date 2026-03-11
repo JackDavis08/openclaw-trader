@@ -47,6 +47,7 @@ export async function checkMtfFilter(
   try {
     const trendLimit = cfg.strategy.ma.long + 10;
     const trendKlines = provider?.get(symbol, cfg.trend_timeframe)
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
       ?? await getKlines(symbol, cfg.trend_timeframe, trendLimit);
     const trendInd = calculateIndicators(
       trendKlines,

@@ -54,6 +54,7 @@ function saveAccount(scenarioId: string, account: ManualAccount): void {
 }
 
 // ── Price fetching (reuses getPrice from exchange/binance.ts) ──
+// eslint-disable-next-line @typescript-eslint/no-deprecated
 const fetchPrice = getPrice;
 
 // ── Close Position ───────────────────────────────────────
@@ -65,6 +66,7 @@ async function closePosition(symbol: string, scenarioId: string, reason = "manua
     return;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-deprecated
   const price = await fetchPrice(symbol);
   const usdtReturn = pos.quantity * price;
   const fee = usdtReturn * 0.001;
@@ -125,6 +127,7 @@ async function openPosition(
     return;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-deprecated
   const price = await fetchPrice(symbol);
   const fee = usdtAmount * 0.001;
   const netUsdt = usdtAmount - fee;
@@ -184,6 +187,7 @@ async function showStatus(scenarioId: string): Promise<void> {
   console.log(`📋 Positions (${Object.keys(account.positions).length}):`);
 
   for (const [sym, pos] of Object.entries(account.positions)) {
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
     const price = await fetchPrice(sym);
     const pnl = (price - pos.entryPrice) * pos.quantity;
     const pnlPct = ((price - pos.entryPrice) / pos.entryPrice) * 100;

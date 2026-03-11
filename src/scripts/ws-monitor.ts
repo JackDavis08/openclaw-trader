@@ -235,7 +235,7 @@ async function refreshStablecoinSignal(): Promise<void> {
     log.info(`🔗 On-chain stablecoin signal refreshed: ${_stablecoinSignal}`);
   } catch (e: unknown) {
     log.warn(`On-chain refresh failed: ${e instanceof Error ? e.message : String(e)}`);
-    if (!_stablecoinSignal) _stablecoinSignal = readOnchainCache();
+    _stablecoinSignal ??= readOnchainCache();
   }
 }
 
@@ -291,6 +291,7 @@ async function preloadKlines(
     await Promise.all(
       batch.map(async (symbol) => {
         try {
+          // eslint-disable-next-line @typescript-eslint/no-deprecated
           const klines = await getKlines(symbol, interval, limit);
           buffer.set(symbol, klines);
           log.info(`Preloaded ${symbol} klines: ${klines.length} bars`);
@@ -386,6 +387,7 @@ async function runStrategy(
             heldKlinesMap[sym] = cached.slice(-corrLookback - 1);
           } else {
             const providerKlines = provider.get(sym, cfg.timeframe);
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
             heldKlinesMap[sym] = providerKlines ?? await getKlines(sym, cfg.timeframe, corrLookback + 1);
           }
         } catch { /* skip on fetch failure */ }
@@ -553,7 +555,7 @@ async function runStrategy(
     const adjustedCfg = { ...cfg, risk: { ...effectiveRisk, position_ratio: effectiveRatio } };
 
     // Notify (with 30-min dedup cooldown per scenario+symbol)
-    if (cfg.notify.on_signal && (signal.type === "buy" || signal.type === "short")) {
+    if (cfg.notify.on_signal && signal.type !== "sell" && signal.type !== "cover") {
       if (shouldNotifySignal(sid, symbol, signal.type)) {
         notifySignal(signal);
       }
@@ -567,7 +569,7 @@ async function runStrategy(
       const action = result.trade.side === "buy" ? "Buy (open long)" : "Open short";
       log.info(`[${sid}] ${symbol}: 📝 Paper ${action} @${result.trade.price.toFixed(4)} (position ${(effectiveRatio * 100).toFixed(0)}%)`);
       notifyPaperTrade(result.trade, result.account);
-      recordSignalHistory(symbol, signal.type as "buy" | "short", result.trade.price, indicators, signal, cfg);
+      recordSignalHistory(symbol, signal.type, result.trade.price, indicators, signal, cfg);
       // Adaptive: attribute arm to opened position
       if (adaptiveMgr) {
         try {
@@ -583,8 +585,8 @@ async function runStrategy(
       notifyError(symbol, new Error(`⚠️ Sentiment warning: ${gate.reason}`));
     }
     state.lastSignals[signal.symbol] = { type: signal.type, timestamp: Date.now() };
-  } else if (signal.type === "sell" || signal.type === "cover") {
-    // Close position — only notify if position actually exists
+  } else {
+    // Close position (sell/cover) — only notify if position actually exists
     const account = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
     const sigHistId = account.positions[symbol]?.signalHistoryId;
     const exitArmId = account.positions[symbol]?.adaptiveArmId;
@@ -740,7 +742,7 @@ async function checkExits(
         let lastRebalanceAt = 0;
         try {
           const rs = JSON.parse(fs.readFileSync(rebalanceStatePath, "utf-8")) as { lastRebalanceAt: number };
-          lastRebalanceAt = rs.lastRebalanceAt ?? 0;
+          lastRebalanceAt = rs.lastRebalanceAt;
         } catch { /* first run */ }
 
         if (shouldRebalance(cfg.rebalance, lastRebalanceAt)) {
@@ -870,7 +872,7 @@ async function main(): Promise<void> {
   }
 
   // ── WebSocket Connection ──────────────────────────────────
-  const wsManager = new BinanceWsManager(allSymbols, timeframe, (msg: string) => log.info(msg));
+  const wsManager = new BinanceWsManager(allSymbols, timeframe, (msg: string) => { log.info(msg); });
 
   wsManager.subscribe(async ({ symbol, kline, isClosed }) => {
     // Update price regardless of close (faster stop-loss response)
@@ -908,7 +910,7 @@ async function main(): Promise<void> {
 
       // Total loss protection (skip entries, exits still run via checkExits poll)
       let totalLossBreached = false;
-      if ((cfg.risk.max_total_loss_percent ?? 0) > 0) {
+      if (cfg.risk.max_total_loss_percent > 0) {
         const posWeightsForLoss = buildPositionWeights(account, currentPrices);
         const currentEquity = account.usdt + posWeightsForLoss.reduce((s, pw) => s + pw.notionalUsdt, 0);
         const lossPct = ((account.initialUsdt - currentEquity) / account.initialUsdt) * 100;

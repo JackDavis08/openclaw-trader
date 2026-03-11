@@ -136,9 +136,9 @@ function makeAccount(scenarioId: string): PaperAccount {
 describe("H3 — handleSignal price validity guard", () => {
   const SID_BASE = "ag-h3";
 
-  beforeEach(() => ensureLogs());
+  beforeEach(() => { ensureLogs(); });
   afterEach(() => {
-    ["0", "nan", "neg", "inf", "valid"].forEach((s) => cleanScenario(`${SID_BASE}-${s}`));
+    ["0", "nan", "neg", "inf", "valid"].forEach((s) => { cleanScenario(`${SID_BASE}-${s}`); });
   });
 
   it("price = 0 -> returns skipped (no position opened)", () => {
@@ -194,10 +194,10 @@ describe("H3 — handleSignal price validity guard", () => {
 describe("M3 — paperDcaAdd divide-by-zero guard", () => {
   const SID_BASE = "ag-m3";
 
-  beforeEach(() => ensureLogs());
+  beforeEach(() => { ensureLogs(); });
   afterEach(() => {
     ["zero-price", "nan-price", "no-pos", "valid"].forEach((s) =>
-      cleanScenario(`${SID_BASE}-${s}`)
+      { cleanScenario(`${SID_BASE}-${s}`); }
     );
   });
 

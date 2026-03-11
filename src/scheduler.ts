@@ -28,12 +28,12 @@ const LOGS_DIR = path.resolve(PROJECT_ROOT, "logs");
 
 function matchesField(field: string, value: number, max: number): boolean {
   for (const part of field.split(",")) {
-    const stepMatch = part.match(/^\*\/(\d+)$/);
+    const stepMatch = /^\*\/(\d+)$/.exec(part);
     if (stepMatch?.[1]) {
       if (value % parseInt(stepMatch[1], 10) === 0) return true;
       continue;
     }
-    const rangeMatch = part.match(/^(\d+)-(\d+)$/);
+    const rangeMatch = /^(\d+)-(\d+)$/.exec(part);
     if (rangeMatch?.[1] && rangeMatch[2]) {
       const lo = parseInt(rangeMatch[1], 10);
       const hi = parseInt(rangeMatch[2], 10);
@@ -131,8 +131,8 @@ function runTask(
 
   child.on("close", (code: number | null) => {
     clearTimeout(timer);
-    state!.running = false;
-    state!.child = null;
+    state.running = false;
+    state.child = null;
     logStream.write(`--- [scheduler] ${taskName} exited code=${code} ---\n`);
     logStream.end();
   });
@@ -156,7 +156,7 @@ function tick(): void {
       continue;
     }
 
-    const timeoutMs = (taskCfg.timeout_minutes ?? 5) * 60_000;
+    const timeoutMs = taskCfg.timeout_minutes * 60_000;
     runTask(taskName, scriptFile, timeoutMs);
   }
 }
@@ -205,19 +205,19 @@ function startDaemon(def: DaemonDef): void {
   child.stderr.pipe(logStream, { end: false });
 
   child.on("close", (code: number | null) => {
-    state!.process = null;
+    state.process = null;
     logStream.write(`--- [scheduler] daemon ${def.name} exited code=${code} ---\n`);
     logStream.end();
 
-    if (state!.stopping) return;
+    if (state.stopping) return;
 
     // Auto-restart with backoff
-    state!.restarts++;
+    state.restarts++;
     console.log(
-      `[scheduler] daemon ${def.name} crashed (code=${code}), restarting in ${state!.backoffMs}ms (attempt #${state!.restarts})`,
+      `[scheduler] daemon ${def.name} crashed (code=${code}), restarting in ${state.backoffMs}ms (attempt #${state.restarts})`,
     );
-    setTimeout(() => startDaemon(def), state!.backoffMs);
-    state!.backoffMs = Math.min(state!.backoffMs * 2, BACKOFF_CAP_MS);
+    setTimeout(() => { startDaemon(def); }, state.backoffMs);
+    state.backoffMs = Math.min(state.backoffMs * 2, BACKOFF_CAP_MS);
   });
 
   console.log(`[scheduler] daemon ${def.name} started (pid=${child.pid})`);
@@ -329,8 +329,8 @@ function main(): void {
     }, 3000);
   };
 
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
-  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => { shutdown("SIGTERM"); });
+  process.on("SIGINT", () => { shutdown("SIGINT"); });
 }
 
 main();

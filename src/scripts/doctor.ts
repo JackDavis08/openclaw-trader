@@ -72,7 +72,7 @@ function checkConfigs() {
         yaml.load(fs.readFileSync(fp, "utf-8"));
         record(`Config ${name}`, "ok", "Exists and YAML syntax is valid");
       } catch (e) {
-        record(`Config ${name}`, "fail", `YAML parse error: ${e}`);
+        record(`Config ${name}`, "fail", `YAML parse error: ${e instanceof Error ? e.message : String(e)}`);
       }
     } else {
       record(`Config ${name}`, "fail", "File does not exist");
@@ -96,7 +96,7 @@ function checkSecrets() {
       continue;
     }
     try {
-      const creds = JSON.parse(fs.readFileSync(fp, "utf-8"));
+      const creds = JSON.parse(fs.readFileSync(fp, "utf-8")) as { apiKey?: string };
       if (!creds.apiKey || creds.apiKey.includes("your_")) {
         record(`Credentials ${label}`, "warn", "File exists but apiKey is a placeholder");
       } else {
@@ -125,7 +125,7 @@ function checkStateFiles() {
     return;
   }
 
-  const scenarios = (paperCfg["scenarios"] as Array<Record<string, unknown>>) ?? [];
+  const scenarios = (paperCfg["scenarios"] as Record<string, unknown>[] | undefined) ?? [];
   for (const scenario of scenarios) {
     const sid = scenario["id"] as string;
     if (!sid) continue;
@@ -135,8 +135,8 @@ function checkStateFiles() {
     if (!fs.existsSync(stateFile)) continue;
 
     try {
-      const state = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
-      const stateInitial = state.initialUsdt as number | undefined;
+      const state = JSON.parse(fs.readFileSync(stateFile, "utf-8")) as { initialUsdt?: number; positions?: Record<string, unknown>; usdt?: number };
+      const stateInitial = state.initialUsdt;
 
       if (configInitial && stateInitial && Math.abs(stateInitial - configInitial) > 1) {
         record(
@@ -147,7 +147,7 @@ function checkStateFiles() {
         );
       } else {
         const posCount = Object.keys(state.positions ?? {}).length;
-        const usdt = (state.usdt as number)?.toFixed(2) ?? "?";
+        const usdt = state.usdt?.toFixed(2) ?? "?";
         record(
           `State [${sid}]`,
           "ok",
@@ -168,7 +168,7 @@ function checkKillSwitch() {
     return;
   }
   try {
-    const ks = JSON.parse(fs.readFileSync(fp, "utf-8"));
+    const ks = JSON.parse(fs.readFileSync(fp, "utf-8")) as { active?: boolean; triggeredAt?: string; reason?: string };
     if (ks.active) {
       record(
         "Kill Switch",
@@ -232,7 +232,7 @@ function checkPositions() {
   let totalPositions = 0;
   for (const file of stateFiles) {
     try {
-      const state = JSON.parse(fs.readFileSync(path.join(LOGS, file), "utf-8"));
+      const state = JSON.parse(fs.readFileSync(path.join(LOGS, file), "utf-8")) as { positions?: Record<string, unknown> };
       const positions = Object.keys(state.positions ?? {});
       if (positions.length > 0) {
         const sid = file.replace("paper-", "").replace(".json", "");

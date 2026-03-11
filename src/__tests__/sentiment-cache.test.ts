@@ -219,7 +219,7 @@ describe("writeKeywordSentimentCache", () => {
     vi.spyOn(fs, "mkdirSync").mockImplementation(() => {
       throw new Error("permission denied");
     });
-    expect(() => writeKeywordSentimentCache(2, 3)).not.toThrow();
+    expect(() => { writeKeywordSentimentCache(2, 3); }).not.toThrow();
   });
 });
 

@@ -184,7 +184,7 @@ afterEach(() => {
 describe("Boundary 1: Extreme price values — system does not crash", () => {
   const SID = "bs-extreme-price";
 
-  afterEach(() => cleanScenario(SID));
+  afterEach(() => { cleanScenario(SID); });
 
   it("price = 0 -> paperBuy returns null or skips, does not crash", () => {
     const account: PaperAccount = {
@@ -331,7 +331,7 @@ describe("Boundary 3: Very short klines (1-5) -> calculateIndicators returns nul
 
 describe("Boundary 4: Excessive positions -> blocked by max_positions", () => {
   const SID = "bs-max-pos";
-  afterEach(() => cleanScenario(SID));
+  afterEach(() => { cleanScenario(SID); });
 
   it("max_positions=3, 4th open is skipped", () => {
     const cfg = makeCfg(SID, {

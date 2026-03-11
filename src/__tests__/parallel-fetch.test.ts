@@ -4,7 +4,7 @@ import { fetchAllSymbols } from "../backtest/parallel-fetch.js";
 // Mock fetchHistoricalKlines
 vi.mock("../backtest/fetcher.js", () => ({
   fetchHistoricalKlines: vi.fn(
-    async (symbol: string, _interval: string, _startMs: number, _endMs: number) => {
+    async (_symbol: string, _interval: string, _startMs: number, _endMs: number) => {
       // Simulate async delay
       await new Promise((r) => setTimeout(r, 10));
       return [

@@ -15,7 +15,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOGS_DIR = path.resolve(__dirname, "../../logs");
 
 interface AdaptiveState {
-  arms: Array<{
+  arms: {
     id: string;
     params: Record<string, number>;
     alpha: number;
@@ -26,7 +26,7 @@ interface AdaptiveState {
     winCount: number;
     createdAt: number;
     lastUsedAt: number;
-  }>;
+  }[];
   activeArmId: string;
   baselineParams: Record<string, number>;
   tradesSinceRefresh: number;
@@ -149,7 +149,7 @@ function showArms(scenarioId?: string): void {
         `${avgPnl.padStart(9)} ` +
         `${String(arm.alpha).padStart(6)} ` +
         `${String(arm.beta).padStart(6)} ` +
-        `${diffs.length > 0 ? diffs.join(", ") : "(baseline)"}`
+        (diffs.length > 0 ? diffs.join(", ") : "(baseline)")
       );
     }
   }

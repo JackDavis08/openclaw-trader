@@ -114,6 +114,7 @@ async function scanSymbol(
     let klines = provider.get(symbol, cfg.timeframe);
     if (!klines || klines.length < limit) {
       // Cache miss (first time or expired), fall back to direct fetch
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
       klines = await getKlines(symbol, cfg.timeframe, limit + 1);
       if (klines.length < limit) return;
     }
@@ -171,6 +172,7 @@ async function scanSymbol(
           try {
             // Prefer DataProvider cache
             const cached = provider.get(sym, cfg.timeframe);
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
             heldKlinesMap[sym] = cached ?? await getKlines(sym, cfg.timeframe, corrLookback + 1);
           } catch (e: unknown) { log.warn(`${scenarioPrefix}${symbol}: ⚠️ Correlation kline(${sym}) fetch failed: ${e instanceof Error ? e.message : String(e)}`); }
         })
@@ -461,6 +463,7 @@ async function runScenario(cfg: RuntimeConfig): Promise<void> {
       const pausedPrices: Record<string, number> = {};
       await Promise.all(heldSymbols.map(async (sym) => {
         try {
+          // eslint-disable-next-line @typescript-eslint/no-deprecated
           const klines = await getKlines(sym, cfg.timeframe, 3);
           if (klines.length > 0) pausedPrices[sym] = klines[klines.length - 1]!.close;
         } catch { /* Price fetch failed, skip this symbol */ }
@@ -634,7 +637,7 @@ async function runScenario(cfg: RuntimeConfig): Promise<void> {
       let lastRebalanceAt = 0;
       try {
         const rs = JSON.parse(fs.readFileSync(rebalanceStatePath, "utf-8")) as { lastRebalanceAt: number };
-        lastRebalanceAt = rs.lastRebalanceAt ?? 0;
+        lastRebalanceAt = rs.lastRebalanceAt;
       } catch { /* first run */ }
 
       if (shouldRebalance(cfg.rebalance, lastRebalanceAt)) {

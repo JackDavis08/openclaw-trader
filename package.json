@@ -71,7 +71,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.0.0",
     "concurrently": "^9.2.1",
-    "eslint": "^9.39.3",
+    "eslint": "^10.0.3",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.1",
     "tsx": "^4.7.0",

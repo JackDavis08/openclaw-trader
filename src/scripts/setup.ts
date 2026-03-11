@@ -38,7 +38,7 @@ const step = (n: number, s: string) => `\n${C.bold}${C.cyan}[${n}] ${s}${C.reset
 // ─── readline Utilities ──────────────────────────────────────────
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const ask = (q: string): Promise<string> =>
-  new Promise((resolve) => rl.question(q, resolve));
+  new Promise((resolve) => { rl.question(q, resolve); });
 const askDefault = async (q: string, def: string): Promise<string> => {
   const ans = await ask(`${q} ${C.gray}[${def}]${C.reset} `);
   return ans.trim() || def;
@@ -136,20 +136,20 @@ Currently enabled scenarios (enabled: true):`);
   const enabledScenarios: string[] = [];
   let currentId = "";
   for (const line of paperContent.split("\n")) {
-    const idMatch = line.match(/^\s+- id:\s+"?([^"]+)"?/);
+    const idMatch = /^\s+- id:\s+"?([^"]+)"?/.exec(line);
     if (idMatch?.[1]) currentId = idMatch[1];
     if (line.includes("enabled: true") && currentId) {
       enabledScenarios.push(currentId);
     }
   }
-  enabledScenarios.forEach((s) => console.log(`  ${C.green}✓${C.reset} ${s}`));
+  enabledScenarios.forEach((s) => { console.log(`  ${C.green}✓${C.reset} ${s}`); });
 
   const editPaper = await confirm(
     "\nWould you like to modify testnet-default initial capital (initial_usdt)?",
     false
   );
   if (editPaper) {
-    const current = paperContent.match(/initial_usdt:\s*(\d+)/)?.[1] ?? "3000";
+    const current = (/initial_usdt:\s*(\d+)/.exec(paperContent))?.[1] ?? "3000";
     const newVal = await askDefault(`Initial USDT (currently ${current}):`, current);
     if (newVal !== current) {
       // Only update the first testnet-default's initial_usdt
@@ -205,7 +205,7 @@ Currently enabled scenarios (enabled: true):`);
     try {
       execSync("npm run cron:sync", { cwd: ROOT, stdio: "inherit" });
       console.log(ok("Cron tasks synced"));
-    } catch (e) {
+    } catch {
       console.log(warn("Cron sync failed, you can manually run npm run cron:sync later"));
     }
   }
@@ -249,10 +249,10 @@ async function setupSecretFile(
   const filePath = path.join(SECRETS_DIR, filename);
 
   if (fs.existsSync(filePath)) {
-    const existing = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    const existing = JSON.parse(fs.readFileSync(filePath, "utf-8")) as { apiKey?: string };
     const hasReal = existing.apiKey && !existing.apiKey.includes("your_");
     if (hasReal) {
-      console.log(ok(`${label} Key already exists (${existing.apiKey.slice(0, 8)}...), skipping`));
+      console.log(ok(`${label} Key already exists (${(existing.apiKey ?? "").slice(0, 8)}...), skipping`));
       return;
     }
   }
@@ -272,7 +272,7 @@ async function setupSecretFile(
   console.log(ok(`Written to .secrets/${filename}`));
 }
 
-main().catch((e) => {
-  console.error(err(`Setup error: ${e instanceof Error ? e.message : e}`));
+main().catch((e: unknown) => {
+  console.error(err(`Setup error: ${e instanceof Error ? e.message : String(e)}`));
   process.exit(1);
 });

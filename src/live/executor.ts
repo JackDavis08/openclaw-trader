@@ -487,8 +487,7 @@ export class LiveExecutor {
     const isFuturesTestnetZeroFill =
       this.isTestnet &&
       this.cfg.exchange.market === "futures" &&
-      reportedQty === 0 &&
-      order.orderId != null;
+      reportedQty === 0;
 
     let execQty: number;
     if (isFuturesTestnetZeroFill) {

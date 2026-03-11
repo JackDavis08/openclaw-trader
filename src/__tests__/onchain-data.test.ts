@@ -45,8 +45,8 @@ function mockHttpsByHost(responses: Record<string, unknown>) {
       const res: any = new EventEmitter();
       res.statusCode = 200;
       if (typeof callback === "function") {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (callback as any)(res);
+         
+        (callback)(res);
       }
       setImmediate(() => {
         res.emit("data", JSON.stringify(body));

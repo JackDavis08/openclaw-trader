@@ -518,7 +518,7 @@ export function fetchBinancePrices(symbols: string[]): Promise<Record<string, nu
     }
     const results: Record<string, number> = {};
     let done = 0;
-    const timeout = setTimeout(() => resolve(results), 5000);
+    const timeout = setTimeout(() => { resolve(results); }, 5000);
 
     for (const sym of symbols) {
       const url = `https://api.binance.com/api/v3/ticker/price?symbol=${sym}`;
@@ -589,11 +589,15 @@ function loadSignalHistory(limit = 50): SignalRecord[] {
       .slice(-limit)
       .reverse()
       .map((r) => ({
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string -- known JSONL string fields
         id: String(r?.["id"] ?? ""),
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string -- known JSONL string fields
         symbol: String(r?.["symbol"] ?? ""),
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string -- known JSONL string fields
         type: String(r?.["type"] ?? ""),
         price: Number(r?.["entryPrice"] ?? 0),
         timestamp: Number(r?.["entryTime"] ?? 0),
+        // eslint-disable-next-line @typescript-eslint/no-base-to-string -- known JSONL string fields
         status: String(r?.["status"] ?? ""),
         pnl: r?.["pnl"] != null ? Number(r["pnl"]) : null,
         // pnlPercent in signal-history.jsonl is stored as a ratio (e.g. 0.038), convert to percentage (3.8) for frontend display
@@ -1414,7 +1418,7 @@ function parseBody<T>(req: http.IncomingMessage): Promise<T> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let totalSize = 0;
-    const timer = setTimeout(() => reject(new Error("Body read timeout")), 10_000);
+    const timer = setTimeout(() => { reject(new Error("Body read timeout")); }, 10_000);
     req.on("data", (chunk: Buffer) => {
       totalSize += chunk.length;
       if (totalSize > MAX_BODY_SIZE) {
@@ -1641,6 +1645,7 @@ export function startDashboardServer(port = 8080): void {
     const priceMatch = matchRoute(pathname, "/api/price/:symbol");
     if (priceMatch && method === "GET") {
       try {
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
         const price = await getPrice(priceMatch["symbol"]!);
         sendJson(res, { symbol: priceMatch["symbol"], price });
       } catch (e) {
@@ -1662,6 +1667,7 @@ export function startDashboardServer(port = 8080): void {
           sendError(res, `No position found for ${symbol} in ${scenarioId}`, 404);
           return;
         }
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
         const price = await getPrice(symbol);
         let trade;
         if (pos.side === "short") {
@@ -1735,6 +1741,7 @@ export function startDashboardServer(port = 8080): void {
           sendError(res, "Invalid symbol format", 400);
           return;
         }
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- side is validated as string from request
         if (side !== "buy" && side !== "short") {
           sendError(res, "Invalid side: must be 'buy' or 'short'", 400);
           return;
@@ -1755,6 +1762,7 @@ export function startDashboardServer(port = 8080): void {
           return;
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
         const price = await getPrice(symbol);
         const tradeOpts: { overridePositionUsdt: number; stopLossPercent?: number; takeProfitPercent?: number } = {
           overridePositionUsdt: amountUsdt,
@@ -1915,15 +1923,15 @@ export function startDashboardServer(port = 8080): void {
         let inTarget = false;
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i]!;
-          if (line.match(new RegExp(`-\\s*id:\\s*["']?${scenarioId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']?`))) {
+          if (new RegExp(`-\\s*id:\\s*["']?${scenarioId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']?`).exec(line)) {
             inTarget = true;
             continue;
           }
-          if (inTarget && line.match(/^\s+-\s+id:/)) {
+          if (inTarget && (/^\s+-\s+id:/.exec(line))) {
             // Hit next scenario, stop
             break;
           }
-          if (inTarget && line.match(/^\s+enabled:/)) {
+          if (inTarget && (/^\s+enabled:/.exec(line))) {
             lines[i] = line.replace(/enabled:\s*(true|false)/, `enabled: ${body.enabled}`);
             found = true;
             break;
@@ -2101,7 +2109,7 @@ export function startDashboardServer(port = 8080): void {
   }
 
   server = http.createServer((req, res) => {
-    void handleRequest(req, res).catch((err) => {
+    void handleRequest(req, res).catch((err: unknown) => {
       log.error(`Request error: ${err instanceof Error ? err.message : String(err)}`);
       if (!res.headersSent) sendError(res, "Internal Server Error", 500);
     });

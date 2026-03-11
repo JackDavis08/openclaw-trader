@@ -39,7 +39,7 @@ async function main() {
         : await client.marketBuyByQty(pos.symbol, qty, true);
       console.log(`  ✅ Closed. orderId=${result.orderId}, status=${result.status}`);
     } catch (e) {
-      console.log(`  ❌ Failed: ${e instanceof Error ? e.message : e}`);
+      console.log(`  ❌ Failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 

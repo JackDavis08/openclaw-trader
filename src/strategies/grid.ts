@@ -102,10 +102,10 @@ const gridStrategy: Strategy = {
       let upper = gridCfg.upper;
       let lower = gridCfg.lower;
       const count = gridCfg.grid_count || 10;
-      const type = gridCfg.grid_type || "arithmetic";
+      const type = gridCfg.grid_type;
 
       if (gridCfg.auto_range || upper === 0 || lower === 0) {
-        const range = autoDetectRange(klines, gridCfg.auto_range_lookback || 100);
+        const range = autoDetectRange(klines, gridCfg.auto_range_lookback ?? 100);
         upper = range.upper;
         lower = range.lower;
       }

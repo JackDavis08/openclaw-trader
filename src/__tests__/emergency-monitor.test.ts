@@ -100,7 +100,7 @@ describe("seenUrls circular trigger prevention", () => {
     expect(writtenState["halt"]).toBe(true);
     const seenUrls = writtenState["seenUrls"] as Record<string, number>;
     expect(seenUrls).toBeDefined();
-    const expiry = seenUrls["https://news.example.com/hack"] as number;
+    const expiry = seenUrls["https://news.example.com/hack"]!;
     expect(expiry).toBeGreaterThan(before + 23 * 3600_000); // close to 24h
     expect(expiry).toBeLessThan(after + 25 * 3600_000);
   });

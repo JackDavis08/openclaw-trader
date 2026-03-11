@@ -94,11 +94,19 @@ export default tseslint.config(
   {
     files: ["src/__tests__/**/*.ts"],
     rules: {
-      "@typescript-eslint/no-unsafe-member-access": "off",    // 测试里 .property 访问灵活处理
+      "@typescript-eslint/no-unsafe-member-access": "off",       // 测试里 .property 访问灵活处理
       "@typescript-eslint/no-unsafe-assignment": "off",
       "@typescript-eslint/no-unsafe-argument": "off",
-      "@typescript-eslint/no-explicit-any": "warn",           // 测试里降级为警告
+      "@typescript-eslint/no-unsafe-call": "off",                // mock 对象调用无需强类型
+      "@typescript-eslint/no-unsafe-return": "off",
+      "@typescript-eslint/no-explicit-any": "warn",              // 测试里降级为警告
       "@typescript-eslint/no-non-null-assertion": "off",
+      "@typescript-eslint/await-thenable": "off",                // mock resolve 不一定是 Promise
+      "@typescript-eslint/require-await": "off",                 // 测试 stub 常省略 await
+      "@typescript-eslint/no-unnecessary-condition": "off",      // 测试断言宽松
+      "@typescript-eslint/no-unnecessary-type-parameters": "off",
+      "@typescript-eslint/no-deprecated": "off",                 // 测试可调用已废弃的 API
+      "@typescript-eslint/consistent-type-imports": "off",       // 测试中 import() 写法灵活
     },
   },
 

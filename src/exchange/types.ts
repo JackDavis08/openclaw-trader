@@ -51,7 +51,7 @@ export interface ExchangeOrderResponse {
   price: string;
   origQty: string;
   executedQty: string;
-  status: ExchangeOrderStatus | string;
+  status: string; // ExchangeOrderStatus or any other string returned by the exchange
   type: string;
   side: string;
   fills?: { price: string; qty: string; commission: string; commissionAsset: string }[];

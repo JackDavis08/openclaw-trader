@@ -109,7 +109,7 @@ async function runOne(strategyId: string | undefined, args: BacktestCliArgs): Pr
   // Fetch historical candlesticks (parallel)
   console.log(`\n📥 Fetching historical data (parallel)...`);
   const klinesBySymbol = await fetchAllSymbols(cfg.symbols, cfg.timeframe, startMs, endMs, {
-    onProgress: (symbol, n) => console.log(`   ${symbol} ✓ ${n} candlesticks`),
+    onProgress: (symbol, n) => { console.log(`   ${symbol} ✓ ${n} candlesticks`); },
   });
 
   // Optional: MTF trend candlesticks (if trend_timeframe is configured)

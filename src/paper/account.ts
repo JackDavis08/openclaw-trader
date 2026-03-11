@@ -151,6 +151,7 @@ export function loadAccount(initialUsdt = 1000, scenarioId = "default"): PaperAc
   try {
     const account = JSON.parse(fs.readFileSync(statePath, "utf-8")) as PaperAccount;
     // Guard: basic field validation, prevent corrupted file from causing NaN downstream
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- runtime guard for corrupted JSON
     if (typeof account.usdt !== "number" || typeof account.positions !== "object" || account.positions === null) {
       throw new Error(`Invalid account state: ${statePath}`);
     }

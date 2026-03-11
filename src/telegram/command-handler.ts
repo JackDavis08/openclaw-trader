@@ -61,6 +61,7 @@ export function _resetPriceFetcher(): void {
 }
 
 function defaultFetchPrice(symbol: string): Promise<number | null> {
+  // eslint-disable-next-line @typescript-eslint/no-deprecated
   return getPrice(symbol).catch(() => null);
 }
 

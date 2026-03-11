@@ -189,7 +189,8 @@ async function runLongPolling(token: string, chatId: number): Promise<never> {
 
   let offset = 0;
 
-  // eslint-disable-next-line no-constant-condition
+   
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- intentional polling loop
   while (true) {
     try {
       const updates = await telegramApi(token, "getUpdates", {

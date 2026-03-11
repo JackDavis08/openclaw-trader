@@ -101,7 +101,7 @@ export async function fetchDynamicPairlist(cfg?: PairlistConfig): Promise<Ranked
 
   // 1. Fetch Binance 24h tickers (AbortController 10s timeout protection)
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10_000);
+  const timeoutId = setTimeout(() => { controller.abort(); }, 10_000);
 
   let tickers: BinanceTicker24h[];
   try {
@@ -116,12 +116,12 @@ export async function fetchDynamicPairlist(cfg?: PairlistConfig): Promise<Ranked
   } catch (err) {
     clearTimeout(timeoutId);
     if (err instanceof Error && err.name === "AbortError") {
-      throw new Error("Binance API timeout after 10s");
+      throw new Error("Binance API timeout after 10s", { cause: err });
     }
     if (err instanceof Error && err.message.startsWith("Binance API error:")) {
       throw err;
     }
-    throw new Error(`Binance fetch failed: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(`Binance fetch failed: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
   }
 
   // 2. Filter

@@ -123,6 +123,7 @@ async function analyzeTf(
 ): Promise<TfAnalysis | null> {
   try {
     const limit = Math.max(cfg.strategy.ma.long, 50) + 30;
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
     const klines = await getKlines(symbol, tf, limit);
     const ind = calculateIndicators(
       klines,
@@ -173,7 +174,9 @@ async function estimateKeyLevels(
   try {
     // Concurrently fetch 4h klines (recent highs/lows) and daily klines (Pivot Point)
     const [klines4h, klines1d] = await Promise.all([
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
       getKlines(symbol, "4h", lookback),
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
       getKlines(symbol, "1d", 5),   // Only need the last few daily klines
     ]);
 
@@ -235,6 +238,7 @@ export async function getMultiTfContext(
   const [tfResults, levels, regimeKlines] = await Promise.all([
     Promise.allSettled(timeframes.map((tf) => analyzeTf(symbol, tf, cfg))),
     estimateKeyLevels(symbol),
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
     getKlines(symbol, "4h", 100).catch(() => null),
   ]);
 

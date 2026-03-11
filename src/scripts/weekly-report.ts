@@ -61,7 +61,7 @@ function sendToTelegram(text: string): void {
 
   const result = spawnSync(OPENCLAW_BIN, args, { encoding: "utf-8", timeout: 15000 });
   if (result.status !== 0) {
-    console.error("❌ Send failed:", result.stderr ?? result.error?.message ?? "unknown");
+    console.error("❌ Send failed:", result.stderr || (result.error?.message ?? "unknown"));
   } else {
     console.log("✅ Weekly report sent to Telegram");
   }

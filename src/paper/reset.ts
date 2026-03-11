@@ -22,7 +22,11 @@ const args = process.argv.slice(2);
 // ── --kill-switch mode ────────────────────────────────────────
 if (args.includes("--kill-switch")) {
   if (fs.existsSync(KILL_SWITCH_PATH)) {
-    const ks = JSON.parse(fs.readFileSync(KILL_SWITCH_PATH, "utf-8"));
+    const ks = JSON.parse(fs.readFileSync(KILL_SWITCH_PATH, "utf-8")) as {
+      active: boolean;
+      reason?: string;
+      triggeredAt?: string;
+    };
     if (!ks.active) {
       console.log("ℹ️  Kill switch is not currently active, no reset needed.");
     } else {
@@ -53,7 +57,7 @@ if (setInitialArg && scenarioArg) {
     console.error(`❌ State file not found: ${stateFile}`);
     process.exit(1);
   }
-  const state = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
+  const state = JSON.parse(fs.readFileSync(stateFile, "utf-8")) as { initialUsdt: number };
   const old = state.initialUsdt;
   state.initialUsdt = newInitial;
   fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
@@ -63,7 +67,7 @@ if (setInitialArg && scenarioArg) {
 }
 
 // ── Normal reset mode ──────────────────────────────────────────────
-const target = args.filter((a) => !a.startsWith("--"))[0];
+const target = args.find((a) => !a.startsWith("--"));
 
 if (!target) {
   console.log(`
@@ -95,9 +99,9 @@ for (const s of scenarios) {
 
   if (fs.existsSync(accountPath)) {
     fs.unlinkSync(accountPath);
-    console.log(`✅ Account reset: ${s.name ?? s.id} (${path.basename(accountPath)})`);
+    console.log(`✅ Account reset: ${s.name} (${path.basename(accountPath)})`);
   } else {
-    console.log(`ℹ️  Account does not exist (skipped): ${s.name ?? s.id}`);
+    console.log(`ℹ️  Account does not exist (skipped): ${s.name}`);
   }
 
   if (fs.existsSync(statePath)) {

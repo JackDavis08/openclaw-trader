@@ -4,7 +4,7 @@
  * Verifies: repeated calls to notifyError with the same context within 30 minutes will not send duplicate notifications
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import * as child_process from "child_process";
+import type * as child_process from "child_process";
 
 // Mock spawnSync to avoid real openclaw CLI calls
 vi.mock("child_process", async (importOriginal) => {

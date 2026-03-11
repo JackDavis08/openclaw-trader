@@ -47,8 +47,8 @@ function mockCsvRequest(csv: string) {
       const res: any = new EventEmitter();
       res.statusCode = 200;
       if (typeof callback === "function") {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (callback as any)(res);
+         
+        (callback)(res);
       }
       setImmediate(() => {
         res.emit("data", csv);
@@ -219,7 +219,7 @@ describe("getMacroContext", () => {
       setImmediate(() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const res: any = new EventEmitter();
-        if (typeof callback === "function") (callback as any)(res);
+        if (typeof callback === "function") (callback)(res);
         setImmediate(() => {
           res.emit("data", csv);
           res.emit("end");
@@ -253,7 +253,7 @@ describe("getMacroContext", () => {
       setImmediate(() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const res: any = new EventEmitter();
-        if (typeof callback === "function") (callback as any)(res);
+        if (typeof callback === "function") (callback)(res);
         setImmediate(() => {
           res.emit("data", csv);
           res.emit("end");

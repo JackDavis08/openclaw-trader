@@ -20,7 +20,7 @@ import { checkMtfFilter } from "../strategy/mtf-filter.js";
 import { loadRecentTrades } from "../strategy/recent-trades.js";
 import { processSignal } from "../strategy/signal-engine.js";
 import { loadStrategyConfig, loadPaperConfig, loadLiveAccountConfigs, buildPaperRuntime } from "../config/loader.js";
-import { createLiveExecutor, LiveExecutor } from "../live/executor.js";
+import { createLiveExecutor, type LiveExecutor } from "../live/executor.js";
 import { reconcilePositions, formatReconcileReport } from "../live/reconcile.js";
 import { loadNewsReport, evaluateSentimentGate } from "../news/sentiment-gate.js";
 import { readSentimentCache } from "../news/sentiment-cache.js";
@@ -196,7 +196,7 @@ async function refreshStablecoinSignal(): Promise<void> {
     log.info(`🔗 On-chain stablecoin signal refreshed: ${_stablecoinSignal}`);
   } catch (e: unknown) {
     log.warn(`On-chain refresh failed: ${e instanceof Error ? e.message : String(e)}`);
-    if (!_stablecoinSignal) _stablecoinSignal = readOnchainCache();
+    _stablecoinSignal ??= readOnchainCache();
   }
 }
 
@@ -234,6 +234,7 @@ async function processSymbol(
 
   let klines = provider.get(symbol, cfg.timeframe);
   if (!klines || klines.length < limit) {
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
     klines = await getKlines(symbol, cfg.timeframe, limit + 1);
     if (klines.length < limit) {
       log.info(`${label} ${symbol}: Insufficient candlesticks (${klines.length}/${limit}), skipping`);
@@ -293,6 +294,7 @@ async function processSymbol(
       heldSymbols.map(async (sym) => {
         try {
           const cached = provider.get(sym, cfg.timeframe);
+          // eslint-disable-next-line @typescript-eslint/no-deprecated
           heldKlinesMap[sym] = cached ?? await getKlines(sym, cfg.timeframe, corrLookback + 1);
         } catch { /* skip on fetch failure */ }
       })
@@ -465,7 +467,7 @@ async function processSymbol(
 
     // buy/short: notify immediately (new entry signal), with 30-min dedup cooldown per scenario+symbol
     // sell/cover: notify only if position exists (avoid false alerts when nothing to close)
-    if (cfg.notify.on_signal && (signal.type === "buy" || signal.type === "short")) {
+    if (cfg.notify.on_signal && signal.type !== "sell" && signal.type !== "cover") {
       if (shouldNotifySignal(cfg.paper.scenarioId, symbol, signal.type)) {
         notifySignal(signal);
       }
@@ -489,7 +491,7 @@ async function processSymbol(
           } catch { /* non-fatal */ }
         }
       }
-    } else if (signal.type === "short") {
+    } else {
       const result = await liveExecutor.handleShort(signal);
       if (result.skipped) {
         log.info(`${label} ${symbol}: Short skipped — ${result.skipped}`);
@@ -530,7 +532,7 @@ async function processSymbol(
     } else {
       log.info(`${label} ${symbol}: Sell signal skipped — no open position`);
     }
-  } else if (signal.type === "cover") {
+  } else {
     // Close short — only notify if position actually exists
     const account = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
     const sigHistId = account.positions[symbol]?.signalHistoryId;
@@ -599,6 +601,7 @@ async function checkExits(cfg: RuntimeConfig, executor?: LiveExecutor): Promise<
   const prices: Record<string, number> = {};
   for (const symbol of cfg.symbols) {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
       const kl = await getKlines(symbol, "1m", 2);
       if (kl.length > 0) prices[symbol] = kl[kl.length - 1]?.close ?? 0;
     } catch (_e: unknown) { /* ignore price fetch failure for individual symbol */ }
@@ -726,8 +729,8 @@ async function main(): Promise<void> {
     const configInitial = cfg.paper.initial_usdt;
     if (fs.existsSync(stateFile)) {
       try {
-        const state = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
-        const stateInitial = state.initialUsdt as number | undefined;
+        const state = JSON.parse(fs.readFileSync(stateFile, "utf-8")) as { initialUsdt?: number };
+        const stateInitial = state.initialUsdt;
         if (configInitial && stateInitial && Math.abs(stateInitial - configInitial) > 1) {
           log.warn(
             `⚠️  [${cfg.paper.scenarioId}] State baseline mismatch: state.initialUsdt=${stateInitial}, ` +
@@ -862,6 +865,7 @@ async function main(): Promise<void> {
 
     // P6.7: BTC crash detection
     try {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
       const btcKlines = await getKlines("BTCUSDT", "1m", 2);
       const latestBtcPrice = btcKlines[btcKlines.length - 1]?.close;
       if (latestBtcPrice && latestBtcPrice > 0) {
@@ -916,7 +920,7 @@ async function main(): Promise<void> {
 
       // ── Total loss protection (max_total_loss_percent) ──
       let totalLossBreached = false;
-      if ((cfg.risk.max_total_loss_percent ?? 0) > 0) {
+      if (cfg.risk.max_total_loss_percent > 0) {
         const priceMap: Record<string, number> = {};
         for (const sym of cfg.symbols) {
           const kl = provider.get(sym, cfg.timeframe);
@@ -977,7 +981,7 @@ async function main(): Promise<void> {
               let lastRebalanceAt = 0;
               try {
                 const rs = JSON.parse(fs.readFileSync(rebalanceStatePath, "utf-8")) as { lastRebalanceAt: number };
-                lastRebalanceAt = rs.lastRebalanceAt ?? 0;
+                lastRebalanceAt = rs.lastRebalanceAt;
               } catch { /* first run */ }
 
               if (shouldRebalance(cfg.rebalance, lastRebalanceAt)) {

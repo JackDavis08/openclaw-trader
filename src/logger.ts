@@ -36,6 +36,8 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
 
 function getMinLevel(): number {
   const env = (process.env["LOG_LEVEL"] ?? "info").toLowerCase();
+  // env may not be a valid LogLevel at runtime; fallback to info
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
   return LEVEL_PRIORITY[env as LogLevel] ?? LEVEL_PRIORITY.info;
 }
 

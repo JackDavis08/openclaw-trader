@@ -766,7 +766,7 @@ export function checkDcaTranches(
 
     const trade = paperDcaAdd(account, symbol, currentPrice, `DCA tranche ${dca.completedTranches + 1} (drop ${dropPct.toFixed(1)}%)`, {
       addUsdt,
-      feeRate: cfg.paper?.fee_rate ?? 0.001,
+      feeRate: cfg.paper.fee_rate,
     });
 
     if (trade) {

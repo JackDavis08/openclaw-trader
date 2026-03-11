@@ -38,6 +38,7 @@ async function getCurrentPrices(syms: string[]): Promise<Record<string, number>>
   const prices: Record<string, number> = {};
   const results = await Promise.allSettled(
     syms.map(async (sym) => {
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
       const klines = await getKlines(sym, "1h", 2);
       return { sym, price: klines[klines.length - 1]?.close ?? 0 };
     })

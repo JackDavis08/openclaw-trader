@@ -34,6 +34,7 @@ export class DataProvider {
    */
   constructor(staleSec = 30, fetchKlines?: KlineFetcher) {
     this.staleSec = staleSec;
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
     this.fetchKlines = fetchKlines ?? getKlines;
   }
 

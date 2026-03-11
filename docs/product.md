@@ -59,6 +59,7 @@ openclaw-trader 是一套**加密货币量化交易系统**，核心定位是「
 - 配置：YAML 三层合并
 - 持久化：JSON 文件（原子写入）+ SQLite（可选，`G5`）
 - 通知：Telegram Bot（via openclaw 通知中心）
+- Web 仪表盘：Next.js 15 + shadcn/ui + TanStack Query v5 + lightweight-charts
 
 ---
 
@@ -134,32 +135,34 @@ openclaw-trader 是一套**加密货币量化交易系统**，核心定位是「
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 双管线架构
+### 2.2 三管线架构
 
-系统以**两条并行管线**覆盖不同需求：
+系统以**三条并行管线**覆盖不同需求：
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                          双管线并行架构                                        │
-│                                                                             │
-│  ┌──────────────────────────────────┐  ┌─────────────────────────────────┐  │
-│  │  管线 A：Cron Monitor             │  │  管线 B：Live Monitor Daemon     │  │
-│  │  src/monitor.ts                  │  │  src/scripts/live-monitor.ts    │  │
-│  │                                  │  │                                 │  │
-│  │  触发方式：cron 每分钟执行         │  │  触发方式：常驻 tmux 进程轮询    │  │
-│  │  执行引擎：Paper Engine           │  │  执行引擎：Live Executor         │  │
-│  │  模式：    模拟交易（paper）       │  │  模式：    真实/Testnet 下单     │  │
-│  │  状态文件：logs/state-{id}.json   │  │  状态：    内存 + 账户文件       │  │
-│  │                                  │  │                                 │  │
-│  │  并行运行所有 enabled 场景         │  │  运行 testnet-default 场景       │  │
-│  └──────────────────────────────────┘  └─────────────────────────────────┘  │
-│                                                                             │
-│  ⚠️  两条管线共同约束：必须调用同一个 processSignal() 函数                     │
-│      任何信号逻辑只改一处，必须同时确保两条管线均同步                           │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────────────────┐
+│                              三管线并行架构                                                  │
+│                                                                                          │
+│  ┌─────────────────────────────┐  ┌─────────────────────────────┐  ┌──────────────────┐  │
+│  │  管线 A：Cron Monitor        │  │  管线 B：Live Monitor Daemon │  │  管线 C：WS Monitor│  │
+│  │  src/monitor.ts             │  │  src/scripts/live-monitor.ts│  │  src/scripts/     │  │
+│  │                             │  │                             │  │  ws-monitor.ts    │  │
+│  │  触发：cron 每分钟执行       │  │  触发：常驻 tmux 进程轮询   │  │  触发：WebSocket   │  │
+│  │  引擎：Paper Engine         │  │  引擎：Live Executor        │  │  实时 K 线推送     │  │
+│  │  模式：模拟交易（paper）     │  │  模式：真实/Testnet 下单    │  │  引擎：Paper/Live  │  │
+│  │  状态：logs/state-{id}.json │  │  状态：内存 + 账户文件      │  │  模式：可配置      │  │
+│  │                             │  │                             │  │                   │  │
+│  │  并行运行所有 enabled 场景   │  │  运行 testnet-default 场景  │  │  实时 WS 推送驱动  │  │
+│  └─────────────────────────────┘  └─────────────────────────────┘  └──────────────────┘  │
+│                                                                                          │
+│  ⚠️  三条管线共同约束：必须调用同一个 processSignal() 函数                                    │
+│      任何信号逻辑只改一处，必须同时确保三条管线均同步                                          │
+└──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**关键规则**：`signal-engine.ts` 中的 `processSignal()` 是唯一的信号逻辑源头。`monitor.ts` 和 `live-monitor.ts` 都以完全相同的参数调用它，禁止在各自文件内单独实现信号条件。
+**管线 C（v0.9 新增）**：`ws-monitor.ts` 通过 Binance WebSocket 接收实时 K 线推送，在 K 线闭合时执行完整 `processSignal()` 管线，与管线 A/B 完全对齐。包含入场过滤链（emergency halt → event calendar → MTF → sentiment gate → Kelly → correlation heat）和退出增强（DCA、signal history close、portfolio rebalance）。BTC 崩盘检测直接使用 WS 实时价格，零额外 REST 请求。
+
+**关键规则**：`signal-engine.ts` 中的 `processSignal()` 是唯一的信号逻辑源头。`monitor.ts`、`live-monitor.ts` 和 `ws-monitor.ts` 都以完全相同的参数调用它，禁止在各自文件内单独实现信号条件。
 
 ---
 
@@ -182,7 +185,7 @@ openclaw-trader 是一套**加密货币量化交易系统**，核心定位是「
 | 11. 事件日历 | `strategy/events-calendar.ts` | `checkEventRisk()` | ✅ |
 | 12. MTF 趋势过滤 | `monitor.ts` / `live-monitor.ts` | 手动 `calculateIndicators` | ✅ |
 | 13. 情绪门控 | `news/sentiment-gate.ts` | `evaluateSentimentGate()` | ✅ |
-| 14. Kelly 仓位 | `strategy/kelly.ts` | `calcKellyRatio()` | ⏳ |
+| 14. Kelly 仓位 | `strategy/kelly.ts` | `calcKellyRatio()` | ✅ |
 | 15. 执行 | `paper/engine.ts` / `live/executor.ts` | `handleSignal()` | ✅ |
 
 ---
@@ -553,7 +556,7 @@ kelly_max_ratio: 0.40     # 仓位上限 40%
 
 **启用条件**：需要 **至少 10 笔历史平仓记录**（`calcKellyRatio` 内部强制检查），否则回退到 `fallback` 固定仓位。
 
-> ⏳ **当前状态**：testnet-default 场景 `position_sizing` 为 `"fixed"`，Kelly 仓位**尚未启用**，等待积累 30+ 笔历史后再切换。
+> ✅ **当前状态**：v0.2 已激活 `position_sizing: "kelly"`，`kelly_min_samples: 30`，不足 30 笔交易时自动回退到固定仓位。
 
 ---
 
@@ -947,6 +950,9 @@ tmux send-keys -t trader-live "npm run live" Enter
 | 调用 `processSignal()` 统一引擎 | ✅ 与实盘一致 |
 | 输出回测报告到 `logs/backtest/` | ✅ |
 | 手续费/滑点模拟 | ✅ |
+| 并行 API 拉取（async semaphore, concurrency=3）| ✅ v0.10 |
+| Worker 线程池（`BacktestWorkerPool`）| ✅ v0.10 |
+| 内存 K 线缓存（`KlineCache`）| ✅ v0.10 |
 
 ### 9.2 Hyperopt 超参数优化
 
@@ -964,7 +970,7 @@ tmux send-keys -t trader-live "npm run live" Enter
 
 | 功能 | 状态 |
 |------|------|
-| 自动滚动窗口分析（训练 + 验证） | ❌ 未定期运行 |
+| 自动滚动窗口分析（训练 + 验证） | ✅ `npm run auto-wf:schedule` 可用 |
 | 防止过拟合，检验参数稳健性 | ✅ 已实现 |
 
 ### 9.4 信号统计分析
@@ -997,16 +1003,21 @@ tmux send-keys -t trader-live "npm run live" Enter
 | `/pause` / `/resume` | 暂停/恢复监控 | ✅ 已实现 |
 | `/halt` / `/resume-halt` | 触发/解除紧急暂停 | ✅ 已实现 |
 
-> ❌ **当前状态**：Telegram Bot 尚未作为独立进程启动（`npm run telegram-bot` 未运行）。
+> ✅ **当前状态**：Telegram Bot 通过 `npm run telegram-poll` 以长轮询模式独立运行。
 
 ### 9.7 Web 仪表盘
 
-**文件**：`src/web/dashboard-server.ts`（通过 `src/scripts/dashboard.ts` 启动）
+**文件**：`src/web/dashboard-server.ts`（通过 `src/scripts/dashboard.ts` 启动）+ `web/` Next.js 15 前端
 
 | 功能 | 状态 |
 |------|------|
-| 实时账户状态 Web UI | ❌ 未启动 |
-| REST API 接口 | ✅ 已实现 |
+| Next.js 15 全功能仪表盘（Phase 1-6 完成）| ✅ |
+| Dashboard / 持仓 / 交易历史 / 绩效 / 信号 / 健康 / 报告页面 | ✅ |
+| 手动交易 / Kill Switch 切换 / 止损调整 / 平仓 | ✅ |
+| 策略管理 / YAML 配置编辑 / 场景开关 | ✅ |
+| 回测 UI（运行 + 结果查看 + 权益曲线）| ✅ |
+| 基本认证（`DASHBOARD_AUTH=user:pass`）| ✅ |
+| REST API 接口 | ✅ |
 
 ### 9.8 其他脚本工具
 
@@ -1018,7 +1029,10 @@ tmux send-keys -t trader-live "npm run live" Enter
 | 周期分析 | `scripts/cycle-analysis.ts` | 分段周期回测 | ✅ |
 | Regime 回测 | `scripts/regime-backtest.ts` | 自适应回测验证 | ✅ |
 | 信号归因 | `scripts/signal-attribution.ts` | 分析各条件对盈亏的贡献 | ❌ 未使用 |
-| WebSocket 监控 | `scripts/ws-monitor.ts` | 替代轮询的实时监控 | ❌ 未接入 |
+| WebSocket 监控 | `scripts/ws-monitor.ts` | 管线 C：WS 实时监控，v0.9 全功能 processSignal() 对齐 | ✅ |
+| Grid 策略 | `strategies/grid.ts` | 算术/几何网格交易，auto-range 自动范围检测 | ✅ |
+| Ensemble 投票 | `strategies/` | 多策略信号加权投票，可扩展 | ✅ |
+| Portfolio 再平衡 | `strategy/rebalance.ts` | 目标权重偏离检测 + 校正订单生成 | ✅ |
 
 ---
 
@@ -1062,7 +1076,7 @@ MTF（多时间框架）趋势过滤逻辑在 `src/monitor.ts`（约 L110-L140�
 
 ---
 
-### A-003 ℹ️ short 信号在 spot 市场被静默跳过，仅 paper engine 层面
+### A-003 ✅ [已修复 v0.2] short 信号在 spot 市场被静默跳过，仅 paper engine 层面
 
 **类型**：信息说明 / 潜在误导
 
@@ -1077,11 +1091,9 @@ if (market !== "futures" && market !== "margin") {
 
 但 testnet-default 场景配置 `exchange.market: "spot"` 且 `strategy_id: "long-short"`（包含 short/cover 信号）。这意味着：**做空信号会被检测到、通知发出，但执行时被 paper engine 静默跳过**。
 
-**影响**：在 spot 市场下做空信号不会被实际执行，但会产生通知。可能造成误解，认为已开空仓位但实际没有。
+**修复**：v0.2 已在 `signal-engine.ts` 层面拦截 spot 市场的 short 信号（在通知之前），不再产生无法执行的通知。
 
-**建议**：
-1. 在 `live-monitor.ts` 和 `monitor.ts` 的信号检测阶段增加市场类型前置检查，对 spot 市场直接跳过 `short` 信号，避免发出无法执行的通知。
-2. 或者将 testnet-default 场景切换为 `market: "futures"` 以真正启用双向交易。
+**影响**：已消除。spot 市场下 short 信号在信号引擎层面即被拦截，不会进入后续管线。
 
 ---
 
@@ -1125,20 +1137,14 @@ const engineResult = processSignal(symbol, klines, cfg, externalCtx);
 
 ---
 
-### A-006 ℹ️ Regime 过滤置信度阈值为 60，未通过配置文件暴露
+### A-006 ✅ [已修复 v0.2] Regime 过滤置信度阈值为 60，未通过配置文件暴露
 
 **类型**：配置硬编码
 
 **描述**：
-`signal-engine.ts` 中：
-```typescript
-if (regime.confidence >= 60) {
-```
-阈值 `60` 硬编码，无法通过 YAML 配置调整。
+`signal-engine.ts` 中原硬编码阈值 `60`。
 
-**影响**：低。但若需要调整灵敏度（如升至 75 减少误触发），需修改代码。
-
-**建议**：将阈值提取为配置项 `regime_confidence_threshold`。
+**修复**：v0.2 已暴露为 YAML 配置项 `regime_confidence_threshold`（默认值：60），可通过配置文件调整。
 
 ---
 

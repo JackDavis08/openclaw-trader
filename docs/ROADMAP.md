@@ -29,40 +29,40 @@
 
 ## v0.5 — Containerization & Deployment ✅
 
-- [x] **Docker 部署** — `Dockerfile` (Node.js 22 alpine multi-stage) + `docker-compose.yml` (bot / dashboard / telegram)
-- [x] **云原生调度器** — `src/scheduler.ts` 内建 setInterval 调度, 替代系统 crontab
-- [x] **Supervisor 模式** — 单进程管理所有子任务, 进程崩溃自动重启
+- [x] **Docker deployment** — `Dockerfile` (Node.js 22 alpine multi-stage) + `docker-compose.yml` (bot / dashboard / telegram)
+- [x] **Cloud-native scheduler** — `src/scheduler.ts` built-in setInterval scheduler, replaces system crontab
+- [x] **Supervisor mode** — Single process manages all sub-tasks, auto-restart on crash
 
 ## v0.6 — Multi-Exchange & Scaling ✅
 
-- [x] **交易所抽象层** — `IExchange` 接口 + `BinanceExchange` 实现 + DI 注入到 `LiveExecutor`
-- [x] **多账户支持** — `live.yaml` accounts 数组, composite scenarioId, Dashboard 按账户分组
+- [x] **Exchange abstraction layer** — `IExchange` interface + `BinanceExchange` implementation + DI injection into `LiveExecutor`
+- [x] **Multi-account support** — `live.yaml` accounts array, composite scenarioId, Dashboard grouped by account
 
 ## v0.7 — Advanced Intelligence ✅
 
-- [x] **期权深度分析** — Max Pain, IV Skew (25d), IV 期限结构 (contango/backwardation), 已集成至 `derivatives-data.ts`
-- [x] **多空比信号集成** — `long-short-signal.ts` 缓存层 + 4 个信号条件 (`ls_ratio_extreme_long/short`, `ls_ratio_long_biased/short_biased`) + monitor 注入
-- [x] **On-chain stablecoin flow** — DeFiLlama 稳定币流量 + `stablecoin_accumulation/distribution` 信号条件
+- [x] **Options deep analysis** — Max Pain, IV Skew (25d), IV term structure (contango/backwardation), integrated into `derivatives-data.ts`
+- [x] **Long/Short ratio signals** — `long-short-signal.ts` cache layer + 4 signal conditions (`ls_ratio_extreme_long/short`, `ls_ratio_long_biased/short_biased`) + monitor injection
+- [x] **On-chain stablecoin flow** — DeFiLlama stablecoin flow + `stablecoin_accumulation/distribution` signal conditions
 
 ## v0.8 — Strategy Enhancement ✅
 
-- [x] **Grid 策略插件** — `src/strategies/grid.ts`, 算术/几何网格, auto-range 自动范围检测, 通过 `populateSignal`/`adjustPosition`/`shouldExit` 钩子实现网格交易
-- [x] **Portfolio 再平衡** — `src/strategy/rebalance.ts`, 目标权重偏离检测 + 校正订单生成, 集成至 `monitor.ts` 和 `live-monitor.ts`
-- [x] **stateStore 注入修复** — `signal-engine.ts` 为所有非 default 策略插件注入 `stateStore`, 修复 `rsi-reversal` 等插件的状态持久化
+- [x] **Grid strategy plugin** — `src/strategies/grid.ts`, arithmetic/geometric grid, auto-range detection, grid trading via `populateSignal`/`adjustPosition`/`shouldExit` hooks
+- [x] **Portfolio rebalancing** — `src/strategy/rebalance.ts`, target weight deviation detection + correction order generation, integrated into `monitor.ts` and `live-monitor.ts`
+- [x] **stateStore injection fix** — `signal-engine.ts` injects `stateStore` for all non-default strategy plugins, fixes state persistence for `rsi-reversal` etc.
 
 ---
 
 ## v0.9 — WebSocket Monitor Feature Parity ✅
 
-- [x] **ws-monitor 全功能对齐** — `ws-monitor.ts` 从 `detectSignal()` 升级为完整 `processSignal()` 管线, 与 `monitor.ts`/`live-monitor.ts` 完全对齐
-- [x] **信号引擎集成** — regime awareness, R:R filter, correlation filter, protection manager 全部接入
-- [x] **入场过滤链** — emergency halt → event calendar → MTF trend filter → sentiment gate (LLM cache) → Kelly sizing → portfolio correlation heat
-- [x] **退出增强** — DCA tranches, signal history close, portfolio exposure + equity snapshot, portfolio rebalancing
-- [x] **BTC 崩盘检测** — 直接使用 WS 实时价格, 零额外 REST 请求
-- [x] **Kill Switch** — CvdManager 接入, 全局熔断保护
-- [x] **动态 pairlist** — `loadPairlistSymbols()` 支持, 保留持仓 symbol
-- [x] **总亏损保护** — 超限暂停入场, 退出仍正常执行
-- [x] **Stablecoin 信号** — 链上数据每小时刷新 (与 live-monitor 共享缓存文件)
+- [x] **ws-monitor full feature parity** — `ws-monitor.ts` upgraded from `detectSignal()` to full `processSignal()` pipeline, fully aligned with `monitor.ts`/`live-monitor.ts`
+- [x] **Signal engine integration** — Regime awareness, R:R filter, correlation filter, protection manager all connected
+- [x] **Entry filter chain** — emergency halt → event calendar → MTF trend filter → sentiment gate (LLM cache) → Kelly sizing → portfolio correlation heat
+- [x] **Exit enhancements** — DCA tranches, signal history close, portfolio exposure + equity snapshot, portfolio rebalancing
+- [x] **BTC crash detection** — Uses WS real-time price directly, zero extra REST requests
+- [x] **Kill Switch** — CvdManager connected, global circuit breaker protection
+- [x] **Dynamic pairlist** — `loadPairlistSymbols()` support, preserves held position symbols
+- [x] **Total loss protection** — Suspends entry on limit breach, exits still execute normally
+- [x] **Stablecoin signals** — On-chain data hourly refresh (shares cache file with live-monitor)
 
 ## v0.10 — Backtest Performance Optimization ✅
 
@@ -75,11 +75,11 @@
 
 ## v1.0 — Production Readiness (planned)
 
-- [ ] **策略集市** — 社区驱动的 YAML + 插件包分享/导入, `openclaw strategy install <name>` CLI 命令
-- [ ] **第二交易所集成** — 在 `IExchange` 抽象层上接入 OKX / Bybit, YAML `exchange.name: "okx"` 切换, 统一 REST + WS 接口映射
-- [ ] **AI 自适应参数** — RL/Bandits 替代 walk-forward 固定优化周期, 在线学习根据最近 N 笔交易实时微调参数
-- [ ] **交易所资金流 (付费 API)** — CryptoQuant / Glassnode 集成: 交易所净流入流出, 鲸鱼地址追踪, SOPR 指标
-- [ ] **Multi-timeframe Dashboard** — 切换不同时间周期的信号视图, 多策略对比面板
+- [ ] **Strategy marketplace** — Community-driven YAML + plugin package sharing/importing, `openclaw strategy install <name>` CLI command
+- [ ] **Second exchange integration** — Connect OKX / Bybit on `IExchange` abstraction, YAML `exchange.name: "okx"` switch, unified REST + WS interface mapping
+- [ ] **AI adaptive parameters** — RL/Bandits replacing walk-forward fixed optimization cycles, online learning fine-tunes parameters based on recent N trades
+- [ ] **Exchange fund flow (paid API)** — CryptoQuant / Glassnode integration: exchange net inflow/outflow, whale address tracking, SOPR indicator
+- [ ] **Multi-timeframe Dashboard** — Switch between signal views of different timeframes, multi-strategy comparison panel
 
 ---
 

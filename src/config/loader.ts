@@ -13,6 +13,7 @@ import type {
   StrategyProfile,
   PaperFileConfig,
   PaperScenario,
+  LiveAccount,
   LiveConfig,
   RuntimeConfig,
   RiskConfig,
@@ -189,6 +190,9 @@ export function buildPaperRuntime(
  * Build RuntimeConfig for live trading
  */
 export function buildLiveRuntime(base: StrategyConfig, live: LiveConfig): RuntimeConfig {
+  if (!live.exchange) {
+    throw new Error("live.yaml: 'exchange' section is required for legacy single-account mode");
+  }
   const { name, credentials_path, ...restExchange } = live.exchange;
   return {
     ...base,
@@ -218,6 +222,75 @@ export function loadEnabledPaperRuntimes(): RuntimeConfig[] {
   return paperCfg.scenarios
     .filter((s) => s.enabled)
     .map((s) => buildPaperRuntime(base, paperCfg, s));
+}
+
+// ─────────────────────────────────────────────────────
+// v0.6 Multi-Account Support
+// ─────────────────────────────────────────────────────
+
+/**
+ * Build RuntimeConfigs for a single LiveAccount.
+ * Each referenced scenario in paper.yaml is resolved, with credentials/testnet
+ * overridden from the account and a composite scenarioId for state isolation.
+ */
+export function buildLiveAccountRuntimes(
+  account: LiveAccount,
+  base: StrategyConfig,
+  paperCfg: PaperFileConfig,
+): RuntimeConfig[] {
+  const scenarioMap = new Map(paperCfg.scenarios.map((s) => [s.id, s]));
+  const seen = new Set<string>();
+
+  return account.scenarios.map((scenarioId) => {
+    if (seen.has(scenarioId)) {
+      throw new Error(`[${account.id}] Duplicate scenario reference: ${scenarioId}`);
+    }
+    seen.add(scenarioId);
+
+    const scenario = scenarioMap.get(scenarioId);
+    if (!scenario) {
+      throw new Error(`[${account.id}] Scenario "${scenarioId}" not found in paper.yaml`);
+    }
+
+    const runtime = buildPaperRuntime(base, paperCfg, scenario);
+
+    // Override exchange credentials from account
+    runtime.exchange = {
+      ...runtime.exchange,
+      name: account.provider,
+      credentials_path: account.credentials_path,
+      testnet: account.testnet ?? false,
+    };
+
+    // Composite scenarioId for state isolation
+    runtime.paper = {
+      ...runtime.paper,
+      scenarioId: `${account.id}:${scenarioId}`,
+    };
+
+    // Apply account-level risk override (on top of scenario/profile risk)
+    if (account.risk) {
+      runtime.risk = mergeRisk(runtime.risk, account.risk);
+    }
+
+    return runtime;
+  });
+}
+
+/**
+ * Load RuntimeConfigs from live.yaml multi-account mode.
+ * Returns empty array if live.yaml has no `accounts` key (caller falls back to legacy behavior).
+ */
+export function loadLiveAccountConfigs(): RuntimeConfig[] {
+  const liveCfg = loadLiveConfig();
+  if (!liveCfg.accounts || liveCfg.accounts.length === 0) return [];
+
+  const base = loadStrategyConfig();
+  const paperCfg = loadPaperConfig();
+
+  return liveCfg.accounts.flatMap((account) =>
+    buildLiveAccountRuntimes(account, base, paperCfg),
+  );
 }
 
 /**

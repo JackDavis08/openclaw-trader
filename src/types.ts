@@ -434,13 +434,23 @@ export interface PaperFileConfig {
 // Live Trading Config (live.yaml)
 // ─────────────────────────────────────────────────────
 
+export interface LiveAccount {
+  id: string;               // e.g. "binance-main"
+  provider: ExchangeName;   // e.g. "binance"
+  credentials_path: string; // e.g. ".secrets/binance-main.json"
+  testnet?: boolean;        // default false
+  scenarios: string[];      // references PaperScenario.id from paper.yaml
+  risk?: Partial<RiskConfig>; // optional per-account risk override
+}
+
 export interface LiveConfig {
-  exchange: ExchangeConfig & {
+  exchange?: ExchangeConfig & {
     name: string;
     credentials_path: string;
   };
   symbols?: string[];
   risk?: Partial<RiskConfig>;
+  accounts?: LiveAccount[];  // v0.6 multi-account mode
 }
 
 // ─────────────────────────────────────────────────────

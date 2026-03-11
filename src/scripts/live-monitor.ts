@@ -19,7 +19,7 @@ import { getKlines } from "../exchange/binance.js";
 import { checkMtfFilter } from "../strategy/mtf-filter.js";
 import { loadRecentTrades } from "../strategy/recent-trades.js";
 import { processSignal } from "../strategy/signal-engine.js";
-import { loadStrategyConfig, loadPaperConfig, buildPaperRuntime } from "../config/loader.js";
+import { loadStrategyConfig, loadPaperConfig, loadLiveAccountConfigs, buildPaperRuntime } from "../config/loader.js";
 import { createLiveExecutor, LiveExecutor } from "../live/executor.js";
 import { reconcilePositions, formatReconcileReport } from "../live/reconcile.js";
 import { loadNewsReport, evaluateSentimentGate } from "../news/sentiment-gate.js";
@@ -580,39 +580,69 @@ async function main(): Promise<void> {
 
   // CLI arguments
   const scenarioArg = process.argv.find((a) => a.startsWith("--scenario="))?.split("=")[1];
+  const accountArg = process.argv.find((a) => a.startsWith("--account="))?.split("=")[1];
 
-  // Filter testnet / live scenarios
-  const scenarios = paperCfg.scenarios.filter((s) => {
-    if (!s.enabled) return false;
-    if (scenarioArg) return s.id === scenarioArg;
-    return s.exchange.testnet === true; // Only run testnet scenarios by default
-  });
+  // ── v0.6 Multi-account: try live.yaml accounts first, fall back to testnet from paper.yaml ──
+  let runtimes: RuntimeConfig[];
+  let mode: "multi-account" | "testnet";
 
-  if (scenarios.length === 0) {
-    console.error("❌ No enabled testnet scenarios found.");
-    console.error("   Please set testnet scenario enabled to true in paper.yaml");
-    console.error("   and configure API Key in .secrets/binance-testnet.json");
+  const liveAccountRuntimes = loadLiveAccountConfigs();
+
+  if (liveAccountRuntimes.length > 0) {
+    mode = "multi-account";
+    runtimes = liveAccountRuntimes;
+
+    // --account=ID filter
+    if (accountArg) {
+      runtimes = runtimes.filter((r) => r.paper.scenarioId.startsWith(`${accountArg}:`));
+    }
+    // --scenario=ID filter (matches composite scenarioId or the scenario portion)
+    if (scenarioArg) {
+      runtimes = runtimes.filter((r) =>
+        r.paper.scenarioId === scenarioArg || r.paper.scenarioId.endsWith(`:${scenarioArg}`)
+      );
+    }
+  } else {
+    // Legacy: filter testnet scenarios from paper.yaml
+    mode = "testnet";
+    const scenarios = paperCfg.scenarios.filter((s) => {
+      if (!s.enabled) return false;
+      if (scenarioArg) return s.id === scenarioArg;
+      return s.exchange.testnet === true;
+    });
+    runtimes = scenarios.map((s) => buildPaperRuntime(base, paperCfg, s));
+  }
+
+  if (runtimes.length === 0) {
+    if (mode === "multi-account") {
+      console.error("❌ No matching live account runtimes found.");
+      console.error("   Check accounts in config/live.yaml and ensure referenced scenarios exist in paper.yaml");
+    } else {
+      console.error("❌ No enabled testnet scenarios found.");
+      console.error("   Please set testnet scenario enabled to true in paper.yaml");
+      console.error("   and configure API Key in .secrets/binance-testnet.json");
+    }
     process.exit(1);
   }
 
-  log.info(`🚀 Starting live monitor, ${scenarios.length} scenario(s)`);
+  log.info(`🚀 Starting live monitor [${mode}], ${runtimes.length} runtime(s)`);
   log.info(`📋 Unified signal engine: processSignal() + MTF + sentiment gate + Kelly + event calendar + correlation filter`);
 
   // ── State file consistency check ─────────────────────────────────────
   const logsDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../logs");
-  for (const scenario of scenarios) {
-    const stateFile = path.join(logsDir, `paper-${scenario.id}.json`);
-    const configInitial = scenario.initial_usdt;
+  for (const cfg of runtimes) {
+    const stateFile = path.join(logsDir, `paper-${cfg.paper.scenarioId}.json`);
+    const configInitial = cfg.paper.initial_usdt;
     if (fs.existsSync(stateFile)) {
       try {
         const state = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
         const stateInitial = state.initialUsdt as number | undefined;
         if (configInitial && stateInitial && Math.abs(stateInitial - configInitial) > 1) {
           log.warn(
-            `⚠️  [${scenario.id}] State baseline mismatch: state.initialUsdt=${stateInitial}, ` +
-            `paper.yaml initial_usdt=${configInitial}. ` +
+            `⚠️  [${cfg.paper.scenarioId}] State baseline mismatch: state.initialUsdt=${stateInitial}, ` +
+            `config initial_usdt=${configInitial}. ` +
             `P&L calculation will use state file value (${stateInitial}). ` +
-            `To reset: npm run paper:reset -- --scenario ${scenario.id} --set-initial ${configInitial}`
+            `To reset: npm run paper:reset -- --scenario ${cfg.paper.scenarioId} --set-initial ${configInitial}`
           );
         }
       } catch { /* ignore corrupted state file, reconciliation flow below will handle it */ }
@@ -620,8 +650,8 @@ async function main(): Promise<void> {
   }
 
   // ── Real CVD — aggTrade WebSocket ────────────────────
-  const cvdSymbols = scenarios[0]
-    ? [...new Set(scenarios.flatMap((s) => s.symbols ?? []))]
+  const cvdSymbols = runtimes.length > 0
+    ? [...new Set(runtimes.flatMap((r) => r.symbols))]
     : [];
   const cvdManager = cvdSymbols.length > 0 ? new CvdManager(cvdSymbols, { windowMs: 3_600_000 }) : null;
   if (cvdManager) {
@@ -629,20 +659,28 @@ async function main(): Promise<void> {
     log.info(`📊 Real CVD started, monitoring ${cvdSymbols.length} symbols`);
   }
 
-  // Test connection
-  for (const scenario of scenarios) {
-    const cfg = buildPaperRuntime(base, paperCfg, scenario);
+  // Test connection — group by credentials_path to ping once per account
+  const pingedCredentials = new Set<string>();
+  for (const cfg of runtimes) {
+    const credKey = `${cfg.exchange.credentials_path ?? "default"}:${cfg.exchange.testnet ? "testnet" : "live"}`;
+    if (pingedCredentials.has(credKey)) continue;
+    pingedCredentials.add(credKey);
+
     const executor = createLiveExecutor(cfg);
     const label = cfg.exchange.testnet ? "Testnet" : "Live";
     const ok = await executor.ping();
     if (!ok) {
-      console.error(`❌ ${scenario.id}: Binance ${label} API connection failed, please check credentials and network`);
+      console.error(`❌ ${cfg.paper.scenarioId}: Binance ${label} API connection failed, please check credentials and network`);
       process.exit(1);
     }
     const balance = await executor.syncBalance();
-    log.info(`✅ ${scenario.id} [${label}]: Connection OK, USDT balance = $${balance.toFixed(2)}`);
+    log.info(`✅ ${cfg.paper.scenarioId} [${label}]: Connection OK, USDT balance = $${balance.toFixed(2)}`);
+  }
 
-    // ── Start reconciliation (P3.3) ──────────────────────────────
+  // ── Start reconciliation (P3.3) + orphan order scan ──────────────────
+  for (const cfg of runtimes) {
+    const executor = createLiveExecutor(cfg);
+
     try {
       const account = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
       const exchangePositions = await executor.getExchangePositions();
@@ -658,7 +696,7 @@ async function main(): Promise<void> {
         for (const sym of ghostSymbols) {
           const pos = account.positions[sym];
           if (!pos) continue;
-          const closePrice = pos.entryPrice; // Cannot get real-time price, fallback to entry price
+          const closePrice = pos.entryPrice;
           const proceeds = pos.quantity * closePrice;
           const ghostTrade = {
             id: `reconcile_${Date.now()}_ghost`,
@@ -694,7 +732,7 @@ async function main(): Promise<void> {
     try {
       const cancelled = await executor.scanOpenOrders();
       if (cancelled > 0) {
-        log.info(`🧹 ${scenario.id}: Cancelled ${cancelled} orphan order(s)`);
+        log.info(`🧹 ${cfg.paper.scenarioId}: Cancelled ${cancelled} orphan order(s)`);
       }
     } catch (err: unknown) {
       log.warn(`⚠️ Orphan order scan skipped: ${String(err)}`);
@@ -710,21 +748,18 @@ async function main(): Promise<void> {
   process.on("SIGTERM", () => { handleShutdown("SIGTERM"); });
   process.on("SIGINT", () => { handleShutdown("SIGINT"); });
 
-  // ── Persistent DataProvider (one per scenario, reused across rounds, avoids re-fetching 4h candles every 60s) ──
-  // staleSec set per timeframe, ensures data refresh within <60s after new candle forms
+  // ── Persistent DataProvider (one per runtime scenarioId, reused across rounds) ──
   const dataProviders = new Map<string, DataProvider>();
-  for (const scenario of scenarios) {
-    const cfg = buildPaperRuntime(base, paperCfg, scenario);
+  for (const cfg of runtimes) {
     const stale = tfStaleSec(cfg.timeframe);
-    dataProviders.set(scenario.id, new DataProvider(stale));
-    log.info(`📦 ${scenario.id}: DataProvider cache TTL ${stale}s (timeframe=${cfg.timeframe})`);
+    dataProviders.set(cfg.paper.scenarioId, new DataProvider(stale));
+    log.info(`📦 ${cfg.paper.scenarioId}: DataProvider cache TTL ${stale}s (timeframe=${cfg.timeframe})`);
   }
 
-  // ── Persistent LiveExecutor (one per scenario, reused across rounds, preserves _exitRejectionLog cooldown state) ──
+  // ── Persistent LiveExecutor (one per runtime scenarioId, preserves _exitRejectionLog cooldown state) ──
   const liveExecutors = new Map<string, LiveExecutor>();
-  for (const scenario of scenarios) {
-    const cfg = buildPaperRuntime(base, paperCfg, scenario);
-    liveExecutors.set(scenario.id, createLiveExecutor(cfg));
+  for (const cfg of runtimes) {
+    liveExecutors.set(cfg.paper.scenarioId, createLiveExecutor(cfg));
   }
 
   // Polling loop
@@ -760,16 +795,14 @@ async function main(): Promise<void> {
     // P6.2 On-chain stablecoin signal refresh (hourly, silently skip on failure)
     await refreshStablecoinSignal().catch(() => {});
 
-    for (const scenario of scenarios) {
+    for (const cfg of runtimes) {
       if (_state.shuttingDown) break; // eslint-disable-line @typescript-eslint/no-unnecessary-condition
 
       // P6.7: Kill Switch check
       if (isKillSwitchActive()) {
-        log.warn(`⛔ Kill Switch activated, skipping scenario ${scenario.id}`);
+        log.warn(`⛔ Kill Switch activated, skipping scenario ${cfg.paper.scenarioId}`);
         continue;
       }
-
-      const cfg = buildPaperRuntime(base, paperCfg, scenario);
 
       // ── P6.2 Dynamic pairlist: override static symbols from config if valid ──
       const account = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
@@ -782,7 +815,7 @@ async function main(): Promise<void> {
         ? cfg.strategy.macd.slow + cfg.strategy.macd.signal + 1
         : 0;
       const klineLimit = Math.max(cfg.strategy.ma.long, cfg.strategy.rsi.period, macdMinBars) + 11;
-      const provider = dataProviders.get(scenario.id) ?? new DataProvider(tfStaleSec(cfg.timeframe));
+      const provider = dataProviders.get(cfg.paper.scenarioId) ?? new DataProvider(tfStaleSec(cfg.timeframe));
       await provider.refresh(cfg.symbols, cfg.timeframe, klineLimit);
       // MTF pre-fetch
       if (cfg.trend_timeframe && cfg.trend_timeframe !== cfg.timeframe) {
@@ -791,7 +824,6 @@ async function main(): Promise<void> {
       }
 
       // ── Total loss protection (max_total_loss_percent) ──
-      // daily_loss_limit is already checked in handleBuy/handleShort; but total loss is not checked, adding it here
       let totalLossBreached = false;
       if ((cfg.risk.max_total_loss_percent ?? 0) > 0) {
         const priceMap: Record<string, number> = {};
@@ -806,24 +838,23 @@ async function main(): Promise<void> {
         if (lossPct >= cfg.risk.max_total_loss_percent) {
           totalLossBreached = true;
           log.warn(
-            `⛔ [${scenario.id}] Total loss ${lossPct.toFixed(2)}% exceeds limit ${cfg.risk.max_total_loss_percent}%, pausing new entries (exits still executed)`
+            `⛔ [${cfg.paper.scenarioId}] Total loss ${lossPct.toFixed(2)}% exceeds limit ${cfg.risk.max_total_loss_percent}%, pausing new entries (exits still executed)`
           );
-          // 30-minute cooldown, avoid notifying every round
-          const lastNotify = _totalLossNotifyAt.get(scenario.id) ?? 0;
+          const lastNotify = _totalLossNotifyAt.get(cfg.paper.scenarioId) ?? 0;
           if (Date.now() - lastNotify >= TOTAL_LOSS_NOTIFY_COOLDOWN_MS) {
-            notifyError(scenario.id, new Error(
+            notifyError(cfg.paper.scenarioId, new Error(
               `⛔ Total loss ${lossPct.toFixed(2)}% exceeds ${cfg.risk.max_total_loss_percent}% limit, new entries auto-paused`
             ));
-            _totalLossNotifyAt.set(scenario.id, Date.now());
+            _totalLossNotifyAt.set(cfg.paper.scenarioId, Date.now());
           }
         }
       }
 
       try {
-        // Check stop loss/take profit first (pass persistent executor, preserving _exitRejectionLog cross-round cooldown state)
-        await checkExits(cfg, liveExecutors.get(scenario.id));
+        // Check stop loss/take profit first
+        await checkExits(cfg, liveExecutors.get(cfg.paper.scenarioId));
 
-        // P7.1 Portfolio exposure summary log (output when positions exist, aids risk monitoring)
+        // P7.1 Portfolio exposure summary log
         try {
           const accForExp = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
           const priceMap: Record<string, number> = {};
@@ -841,9 +872,8 @@ async function main(): Promise<void> {
               if (kl) klinesBySymbol[sym] = kl;
             }
             const exposure = calcPortfolioExposure(posWeights, totalEquity, klinesBySymbol);
-            log.info(`[${scenario.id}] ${formatPortfolioExposure(exposure).replace(/\*\*/g, "")}`);
+            log.info(`[${cfg.paper.scenarioId}] ${formatPortfolioExposure(exposure).replace(/\*\*/g, "")}`);
           }
-          // Record equity snapshot (rate-limited to 1 per hour internally)
           recordEquitySnapshot(cfg.paper.scenarioId, totalEquity, Object.keys(accForExp.positions).length);
         } catch { /* exposure summary failure does not affect main flow */ }
 
@@ -853,15 +883,14 @@ async function main(): Promise<void> {
           if (_state.shuttingDown) break; // eslint-disable-line @typescript-eslint/no-unnecessary-condition
           await processSymbol(symbol, cfg, provider).catch((err: unknown) => {
             const msg = err instanceof Error ? err.message : String(err);
-            log.error(`❌ ${scenario.id} ${symbol}: ${msg}`);
+            log.error(`❌ ${cfg.paper.scenarioId} ${symbol}: ${msg}`);
             if (cfg.notify.on_error) notifyError(symbol, new Error(msg));
           });
-          // Brief wait between symbols to avoid Binance rate limiting
           await new Promise<void>((r) => setTimeout(r, 300));
         }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        log.error(`❌ Scenario ${scenario.id} runtime error: ${msg}`);
+        log.error(`❌ Scenario ${cfg.paper.scenarioId} runtime error: ${msg}`);
       }
     }
 

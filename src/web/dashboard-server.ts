@@ -34,7 +34,7 @@ import { fileURLToPath } from "url";
 import { createLogger } from "../logger.js";
 import { loadAccount, saveAccount, paperBuy, paperSell, paperOpenShort, paperCoverShort } from "../paper/account.js";
 import { parse } from "yaml";
-import { loadPaperConfig, loadStrategyConfig, loadStrategyProfile, listStrategyProfiles, mergeRisk, mergeStrategySection } from "../config/loader.js";
+import { loadPaperConfig, loadLiveConfig, loadStrategyConfig, loadStrategyProfile, listStrategyProfiles, mergeRisk, mergeStrategySection } from "../config/loader.js";
 import { listStrategyDetails } from "../strategies/index.js";
 import { fetchHistoricalKlines } from "../backtest/fetcher.js";
 import { runBacktest, type BacktestResult } from "../backtest/runner.js";
@@ -56,6 +56,7 @@ const log = createLogger("dashboard");
 export interface AccountSummary {
   scenarioId: string;
   name: string;
+  accountId?: string;  // v0.6: live account grouping label (e.g. "binance-main")
   initialUsdt: number;
   usdt: number;
   totalEquity: number;
@@ -172,12 +173,36 @@ export function buildDashboardData(): DashboardData {
   const positions: PositionWithPnl[] = [];
   const allTrades: TradeRecord[] = [];
 
-  let scenarios: { id: string; name: string; initial_usdt: number }[];
+  let scenarios: { id: string; name: string; initial_usdt: number; accountId?: string }[];
   try {
     const paperConfig = loadPaperConfig();
     scenarios = paperConfig.scenarios
       .filter((s) => s.enabled)
       .map((s) => ({ id: s.id, name: s.name, initial_usdt: s.initial_usdt }));
+
+    // v0.6: discover live account composite scenarioIds
+    try {
+      const liveCfg = loadLiveConfig();
+      if (liveCfg.accounts && liveCfg.accounts.length > 0) {
+        const scenarioMap = new Map(paperConfig.scenarios.map((s) => [s.id, s]));
+        for (const account of liveCfg.accounts) {
+          for (const scenarioId of account.scenarios) {
+            const scenario = scenarioMap.get(scenarioId);
+            if (!scenario) continue;
+            const compositeId = `${account.id}:${scenarioId}`;
+            // Avoid duplicates
+            if (!scenarios.some((s) => s.id === compositeId)) {
+              scenarios.push({
+                id: compositeId,
+                name: `[${account.id}] ${scenario.name}`,
+                initial_usdt: scenario.initial_usdt,
+                accountId: account.id,
+              });
+            }
+          }
+        }
+      }
+    } catch { /* live.yaml may not exist or have no accounts */ }
   } catch {
     scenarios = [{ id: "default", name: "Default", initial_usdt: 1000 }];
   }
@@ -212,6 +237,7 @@ export function buildDashboardData(): DashboardData {
     accounts.push({
       scenarioId: scenario.id,
       name: scenario.name,
+      ...("accountId" in scenario && scenario.accountId ? { accountId: scenario.accountId } : {}),
       initialUsdt: account.initialUsdt,
       usdt: account.usdt,
       totalEquity,

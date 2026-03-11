@@ -46,3 +46,33 @@ risk:
   max_position_per_symbol: 0.25
   max_total_loss_percent: 15
   daily_loss_limit_percent: 5
+
+# ───────────────────────────────────────
+# v0.6 Multi-Account Mode (optional)
+# ───────────────────────────────────────
+# Uncomment to enable multi-account mode.
+# Each account references scenario IDs from paper.yaml.
+# The scenario defines strategy, symbols, risk, market type.
+# The account provides credentials + testnet flag.
+#
+# When `accounts` is present, live-monitor uses multi-account mode;
+# otherwise it falls back to testnet-from-paper.yaml behavior.
+#
+# accounts:
+#   - id: binance-main
+#     provider: binance
+#     credentials_path: .secrets/binance-main.json
+#     scenarios: [conservative-spot, trend-spot]
+#
+#   - id: binance-futures
+#     provider: binance
+#     credentials_path: .secrets/binance-futures.json
+#     scenarios: [aggressive-futures-3x]
+#
+#   - id: binance-testnet
+#     provider: binance
+#     credentials_path: .secrets/binance-testnet.json
+#     testnet: true
+#     scenarios: [testnet-default]
+#     risk:                          # optional per-account risk override
+#       position_ratio: 0.08

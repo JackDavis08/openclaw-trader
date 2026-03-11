@@ -208,7 +208,7 @@ scenarios:
     name: "Testnet × 阶段一数据积累"
     enabled: true
     strategy_id: "data-accumulation"
-    initial_usdt: 3000          # Phase 1 起点（贴近 testnet 实际余额 ~$2924）
+    initial_usdt: 8202          # 同步自 state.initialUsdt（2026-03-11 修正）
     fee_rate: 0.001
     slippage_percent: 0.05
     exchange:
@@ -271,7 +271,7 @@ scenarios:
     name: "Futures Testnet 双向测试"
     enabled: true                # ✅ 2026-03-05 重新启用：futures testnet API key 已修复
     strategy_id: "long-short"   # config/strategies/long-short.yaml
-    initial_usdt: 5000
+    initial_usdt: 3753          # 同步自 state.initialUsdt（2026-03-11 修正，原为 ghost 持仓清理后重置值）
     fee_rate: 0.0004
     slippage_percent: 0.03
     exchange:

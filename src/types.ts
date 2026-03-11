@@ -282,6 +282,17 @@ export interface StrategyConfig {
       extreme_short_threshold?: number;  // Default 0.5
       short_biased_threshold?: number;   // Default 0.8
     };
+    /** Grid trading strategy config (used when strategy_id = "grid") */
+    grid?: {
+      enabled: boolean;
+      upper: number;                // Upper price bound (0 = auto_range)
+      lower: number;                // Lower price bound (0 = auto_range)
+      grid_count: number;           // Number of grid levels (default 10)
+      grid_type: "arithmetic" | "geometric";
+      auto_range?: boolean;         // Auto-detect from recent high/low (default false)
+      auto_range_lookback?: number; // Klines lookback for auto range (default 100)
+      position_per_grid?: number;   // USDT per grid level (overrides position_ratio)
+    };
   };
   signals: {
     buy: string[];
@@ -363,6 +374,14 @@ export interface StrategyConfig {
   }>>;
   /** Ensemble voting config. Used when strategy_id = "ensemble" */
   ensemble?: EnsembleConfig;
+  /** Portfolio rebalancing config (cross-symbol target-weight deviation detection + corrective orders) */
+  rebalance?: {
+    enabled: boolean;
+    target_weights: Record<string, number>;  // symbol → weight (sum ≈ 1.0)
+    deviation_threshold: number;             // default 0.05 (5%)
+    max_rebalance_ratio: number;            // max single rebalance as % of equity (default 0.10)
+    interval_hours?: number;                // min hours between rebalances (default 24)
+  };
 }
 
 // ─────────────────────────────────────────────────────
@@ -407,6 +426,16 @@ export interface StrategyProfile {
     rsi?: { period?: number; oversold?: number; overbought?: number; overbought_exit?: number };
     macd?: { enabled?: boolean; fast?: number; slow?: number; signal?: number };
     volume?: { surge_ratio?: number; low_ratio?: number };
+    grid?: {
+      enabled?: boolean;
+      upper?: number;
+      lower?: number;
+      grid_count?: number;
+      grid_type?: "arithmetic" | "geometric";
+      auto_range?: boolean;
+      auto_range_lookback?: number;
+      position_per_grid?: number;
+    };
   };
   signals?: {
     buy?: string[];

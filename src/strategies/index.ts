@@ -10,6 +10,7 @@ import "./default.js";
 import "./rsi-reversal.js";
 import "./breakout.js";
 import "./ensemble-strategy.js";
+import "./grid.js";
 
 // Re-export public API
 export { registerStrategy, getStrategy, listStrategies, listStrategyDetails } from "./registry.js";

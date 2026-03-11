@@ -1,0 +1,46 @@
+name: "Grid Trading"
+description: "Range-bound grid trading strategy. Auto-detects price range and places grid orders."
+strategy_id: "grid"
+
+timeframe: "1h"
+
+strategy:
+  ma:
+    short: 20
+    long: 60
+  rsi:
+    period: 14
+    oversold: 30
+    overbought: 70
+  macd:
+    enabled: false
+    fast: 12
+    slow: 26
+    signal: 9
+  grid:
+    enabled: true
+    upper: 0
+    lower: 0
+    grid_count: 10
+    grid_type: "arithmetic"
+    auto_range: true
+    auto_range_lookback: 100
+    position_per_grid: 100
+
+risk:
+  stop_loss_percent: 8
+  take_profit_percent: 20
+  trailing_stop:
+    enabled: false
+    activation_percent: 5
+    callback_percent: 2
+  position_ratio: 0.10
+  max_positions: 5
+  max_position_per_symbol: 0.5
+  max_total_loss_percent: 25
+  daily_loss_limit_percent: 10
+  dca:
+    enabled: true
+    tranches: 10
+    drop_pct: 2
+    max_hours: 720

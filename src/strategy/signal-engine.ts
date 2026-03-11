@@ -27,6 +27,7 @@ import type { TradeRecord } from "./protection-manager.js";
 // Side-effect import: registers all built-in strategies (default / rsi-reversal / breakout)
 import "../strategies/index.js";
 import { getStrategy } from "../strategies/registry.js";
+import { createStateStore } from "../strategies/state-store.js";
 import type { StrategyContext } from "../strategies/types.js";
 
 // ─────────────────────────────────────────────────────
@@ -272,10 +273,12 @@ export function processSignal(
   if (strategyId !== "default") {
     // ── Strategy plugin path ─────────────────────────────────
     const plugin = getStrategy(strategyId);
+    const stateStore = createStateStore(strategyId, symbol);
     const ctx: StrategyContext = {
       klines,
       cfg: cfgWithRegimeSignals,   // Pass regime-filtered signal conditions
       indicators,
+      stateStore,
       ...(external.currentPosSide !== undefined ? { currentPosSide: external.currentPosSide } : {}),
     };
     const signalType = plugin.populateSignal(ctx);

@@ -35,8 +35,8 @@ async function main() {
     console.log(`  → ${pos.symbol} ${isLong ? "SELL (close long)" : "BUY (close short)"} qty=${qty}`);
     try {
       const result = isLong
-        ? await client.marketSell(pos.symbol, qty)
-        : await client.marketBuyByQty(pos.symbol, qty);
+        ? await client.marketSell(pos.symbol, qty, true)
+        : await client.marketBuyByQty(pos.symbol, qty, true);
       console.log(`  ✅ Closed. orderId=${result.orderId}, status=${result.status}`);
     } catch (e) {
       console.log(`  ❌ Failed: ${e instanceof Error ? e.message : e}`);

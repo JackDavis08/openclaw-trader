@@ -73,11 +73,19 @@
 - [x] **Walk-forward/sensitivity async** — `walkForwardSingle()` and `runSensitivity()` now async with optional worker pool parameter
 - [x] **Auto-wf parallelism** — Pre-fetches all symbols before optimization loop, cross-symbol parallelism via `Promise.all()`
 
-## v1.0 — Production Readiness (planned)
+## v1.0 — AI Adaptive Parameters ✅
+
+- [x] **Thompson Sampling Bandit** — `src/optimization/bandit.ts` pure math layer: Beta-distributed Thompson Sampling with ε-greedy safety net, Gamma sampling (Marsaglia–Tsang), arm selection/update/creation
+- [x] **AdaptiveManager** — `src/optimization/adaptive.ts`: maintains K parameter-set variants (arms), arm-0 = baseline safety anchor, cold start protection, `max_drift_percent` constraint, periodic arm refresh (retire worst 50%, mutate best), fallback on all-arms-underperform, JSON state persistence
+- [x] **Parameter space extension** — `perturbWithinBounds()` in `param-space.ts`: respects both ParamDef range and drift bounds, enforces `ma_short < ma_long` constraint
+- [x] **Three-pipeline integration** — Symmetric adaptive overlay in `monitor.ts`, `ws-monitor.ts`, `live-monitor.ts`: arm selection before `processSignal()`, arm attribution on entry, reward update on exit (signal + stop-loss/take-profit)
+- [x] **CLI tool** — `src/scripts/adaptive-params.ts` (`status` / `arms` / `reset`), npm scripts `adaptive:status`, `adaptive:arms`, `adaptive:reset`
+- [x] **Default off** — `adaptive.enabled: false` in `strategy.yaml`, zero impact on existing behavior
+
+## v1.1 — Production Readiness (planned)
 
 - [ ] **Strategy marketplace** — Community-driven YAML + plugin package sharing/importing, `openclaw strategy install <name>` CLI command
 - [ ] **Second exchange integration** — Connect OKX / Bybit on `IExchange` abstraction, YAML `exchange.name: "okx"` switch, unified REST + WS interface mapping
-- [ ] **AI adaptive parameters** — RL/Bandits replacing walk-forward fixed optimization cycles, online learning fine-tunes parameters based on recent N trades
 - [ ] **Exchange fund flow (paid API)** — CryptoQuant / Glassnode integration: exchange net inflow/outflow, whale address tracking, SOPR indicator
 - [ ] **Multi-timeframe Dashboard** — Switch between signal views of different timeframes, multi-strategy comparison panel
 

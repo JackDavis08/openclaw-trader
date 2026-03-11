@@ -73,11 +73,19 @@
 - [x] **Walk-forward/sensitivity 异步化** — `walkForwardSingle()` 和 `runSensitivity()` 现为异步，支持可选 worker pool 参数
 - [x] **Auto-wf 并行化** — 优化循环前预拉取所有 symbol，通过 `Promise.all()` 实现跨 symbol 并行
 
-## v1.0 — 生产就绪（计划中）
+## v1.0 — AI 自适应参数 ✅
+
+- [x] **Thompson Sampling Bandit** — `src/optimization/bandit.ts` 纯数学层：Beta 分布 Thompson Sampling + ε-greedy 安全网，Gamma 采样（Marsaglia–Tsang），arm 选择/更新/创建
+- [x] **AdaptiveManager** — `src/optimization/adaptive.ts`：维护 K 个参数集变体（arm），arm-0 = baseline 安全锚，冷启动保护，`max_drift_percent` 漂移约束，定期 arm 刷新（淘汰末位 50%，变异最优），全亏损回退 baseline，JSON 状态持久化
+- [x] **参数空间扩展** — `param-space.ts` 中 `perturbWithinBounds()`：同时遵守 ParamDef 范围和漂移 bounds，强制 `ma_short < ma_long` 约束
+- [x] **三管线集成** — `monitor.ts`、`ws-monitor.ts`、`live-monitor.ts` 对称 adaptive overlay：`processSignal()` 前选 arm，开仓后记录 armId，平仓后更新奖励（信号平仓 + 止损/止盈）
+- [x] **CLI 工具** — `src/scripts/adaptive-params.ts`（`status` / `arms` / `reset`），npm scripts `adaptive:status`、`adaptive:arms`、`adaptive:reset`
+- [x] **默认关闭** — `strategy.yaml` 中 `adaptive.enabled: false`，对现有行为零影响
+
+## v1.1 — 生产就绪（计划中）
 
 - [ ] **策略集市** — 社区驱动的 YAML + 插件包分享/导入，`openclaw strategy install <name>` CLI 命令
 - [ ] **第二交易所集成** — 在 `IExchange` 抽象层上接入 OKX / Bybit，YAML `exchange.name: "okx"` 切换，统一 REST + WS 接口映射
-- [ ] **AI 自适应参数** — RL/Bandits 替代 walk-forward 固定优化周期，在线学习根据最近 N 笔交易实时微调参数
 - [ ] **交易所资金流（付费 API）** — CryptoQuant / Glassnode 集成：交易所净流入流出、鲸鱼地址追踪、SOPR 指标
 - [ ] **Multi-timeframe 仪表盘** — 切换不同时间周期的信号视图，多策略对比面板
 

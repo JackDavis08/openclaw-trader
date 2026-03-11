@@ -61,6 +61,8 @@ export interface Indicators {
   btcDomChange?: number; // 7-day dominance change (positive=rising=altcoin risk; negative=falling=altcoin opportunity)
   // ── Derivatives / On-chain data (injected by market-analysis/monitor) ───────────────
   putCallRatio?: number;  // Options PCR (> 1.5 = extreme bearish/reversal buy opportunity, < 0.5 = extreme bullish/reversal sell opportunity)
+  longShortRatio?: number;    // Global L/S ratio (>1 = long bias; contrarian: extremes signal reversals)
+  topLongShortRatio?: number; // Top trader account L/S ratio (smart money positioning)
   /** On-chain stablecoin flow signal */
   stablecoinSignal?: "accumulation" | "distribution" | "neutral";
 }
@@ -272,6 +274,13 @@ export interface StrategyConfig {
     funding_rate?: {
       long_threshold?: number;  // Long extreme threshold %, default 0.30
       short_threshold?: number; // Short extreme threshold % (absolute value), default 0.15
+    };
+    /** Long/Short ratio contrarian signal thresholds (optional, uses defaults if not configured) */
+    long_short_ratio?: {
+      extreme_long_threshold?: number;   // Default 3.0
+      long_biased_threshold?: number;    // Default 1.8
+      extreme_short_threshold?: number;  // Default 0.5
+      short_biased_threshold?: number;   // Default 0.8
     };
   };
   signals: {

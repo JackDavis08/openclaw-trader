@@ -68,6 +68,11 @@ const REVERSAL_CONDITIONS = new Set([
   // Funding rate: also a reversal trigger (extreme funding rate -> crowded trade reversal)
   "funding_rate_overlong",
   "funding_rate_overshort",
+  // Long/Short ratio: contrarian reversal (extreme retail positioning -> reversal)
+  "ls_ratio_extreme_long",
+  "ls_ratio_extreme_short",
+  "ls_ratio_long_biased",
+  "ls_ratio_short_biased",
   // CVD: also usable for reversal detection (selling/buying pressure extremes)
   "cvd_bullish",
   "cvd_bearish",
@@ -145,6 +150,10 @@ export interface ExternalContext {
    * < 0.5 = extreme bullish (market greed), usable as contrarian sell signal
    */
   putCallRatio?: number;
+  /** Global Long/Short account ratio (contrarian: >3 = extreme long/top, <0.5 = extreme short/bottom) */
+  longShortRatio?: number;
+  /** Top trader account L/S ratio (smart money positioning) */
+  topLongShortRatio?: number;
   /**
    * On-chain stablecoin flow signal, computed by onchain-data
    * accumulation = net inflow to exchanges (potential buying pressure) -> bullish bias
@@ -224,6 +233,8 @@ export function processSignal(
   if (external.btcDominance !== undefined) indicators.btcDominance = external.btcDominance;
   if (external.btcDomChange !== undefined) indicators.btcDomChange = external.btcDomChange;
   if (external.putCallRatio !== undefined) indicators.putCallRatio = external.putCallRatio;
+  if (external.longShortRatio !== undefined) indicators.longShortRatio = external.longShortRatio;
+  if (external.topLongShortRatio !== undefined) indicators.topLongShortRatio = external.topLongShortRatio;
   if (external.stablecoinSignal !== undefined) indicators.stablecoinSignal = external.stablecoinSignal;
 
   // ── 2b. Regime pre-classification (P5.3) ─────────────────────────

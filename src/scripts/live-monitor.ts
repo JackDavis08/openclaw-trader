@@ -39,6 +39,7 @@ import { readEmergencyHalt } from "../news/emergency-monitor.js";
 import { checkEventRisk, loadCalendar } from "../strategy/events-calendar.js";
 import { CvdManager, readCvdCache } from "../exchange/order-flow.js";
 import { fetchFundingRatePct } from "../strategy/funding-rate-signal.js";
+import { fetchLongShortRatios } from "../strategy/long-short-signal.js";
 import { getBtcDominanceTrend } from "../strategy/btc-dominance.js";
 import { calcKellyRatio } from "../strategy/kelly.js";
 import { getOnChainContext } from "../exchange/onchain-data.js";
@@ -241,6 +242,14 @@ async function processSymbol(
     }
   } catch { /* silently skip on failure */ }
 
+  // Long/Short ratio
+  let externalLSRatio: number | undefined;
+  let externalTopLSRatio: number | undefined;
+  try {
+    const lsData = await fetchLongShortRatios(symbol);
+    if (lsData) { externalLSRatio = lsData.globalLSRatio; externalTopLSRatio = lsData.topAccountLSRatio; }
+  } catch { /* silently skip */ }
+
   // CVD
   try {
     const realCvd = readCvdCache(symbol) as { cvd?: number; updatedAt?: number } | undefined;
@@ -276,6 +285,8 @@ async function processSymbol(
     ...(externalFundingRate !== undefined ? { fundingRate: externalFundingRate } : {}),
     ...(externalBtcDom !== undefined ? { btcDominance: externalBtcDom } : {}),
     ...(externalBtcDomChange !== undefined ? { btcDomChange: externalBtcDomChange } : {}),
+    ...(externalLSRatio !== undefined ? { longShortRatio: externalLSRatio } : {}),
+    ...(externalTopLSRatio !== undefined ? { topLongShortRatio: externalTopLSRatio } : {}),
     ...(currentPosSide !== undefined ? { currentPosSide } : {}),
     ...(Object.keys(heldKlinesMap).length > 0 ? { heldKlinesMap } : {}),
     ...(_stablecoinSignal !== undefined ? { stablecoinSignal: _stablecoinSignal } : {}),

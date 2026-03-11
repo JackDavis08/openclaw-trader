@@ -181,6 +181,47 @@ const SIGNAL_CHECKERS: Record<string, SignalChecker> = {
     return ind.fundingRate < -threshold;
   },
 
+  // ── Long/Short Ratio Contrarian ────────────────────────────
+  /**
+   * Retail extremely long (global L/S ratio very high) -> contrarian top signal
+   * Default threshold 3.0 (configurable via strategy.long_short_ratio.extreme_long_threshold)
+   */
+  ls_ratio_extreme_long: (ind, cfg) => {
+    if (ind.longShortRatio === undefined) return false;
+    const threshold = cfg.strategy.long_short_ratio?.extreme_long_threshold ?? 3.0;
+    return ind.longShortRatio > threshold;
+  },
+
+  /**
+   * Retail extremely short (global L/S ratio very low) -> contrarian bottom signal
+   * Default threshold 0.5 (configurable via strategy.long_short_ratio.extreme_short_threshold)
+   */
+  ls_ratio_extreme_short: (ind, cfg) => {
+    if (ind.longShortRatio === undefined) return false;
+    const threshold = cfg.strategy.long_short_ratio?.extreme_short_threshold ?? 0.5;
+    return ind.longShortRatio < threshold;
+  },
+
+  /**
+   * Retail leaning long (global L/S ratio elevated) -> mild warning
+   * Default threshold 1.8 (configurable via strategy.long_short_ratio.long_biased_threshold)
+   */
+  ls_ratio_long_biased: (ind, cfg) => {
+    if (ind.longShortRatio === undefined) return false;
+    const threshold = cfg.strategy.long_short_ratio?.long_biased_threshold ?? 1.8;
+    return ind.longShortRatio > threshold;
+  },
+
+  /**
+   * Retail leaning short (global L/S ratio depressed) -> mild signal
+   * Default threshold 0.8 (configurable via strategy.long_short_ratio.short_biased_threshold)
+   */
+  ls_ratio_short_biased: (ind, cfg) => {
+    if (ind.longShortRatio === undefined) return false;
+    const threshold = cfg.strategy.long_short_ratio?.short_biased_threshold ?? 0.8;
+    return ind.longShortRatio < threshold;
+  },
+
   // ── CVD (Cumulative Volume Delta) ──────────────────────────
   /**
    * CVD bullish: net buying pressure positive over last 20 klines (buyers dominate)

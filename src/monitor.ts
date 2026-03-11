@@ -28,6 +28,7 @@ import { processSignal } from "./strategy/signal-engine.js";
 import { logFilteredSignal } from "./strategy/signal-history.js";
 import { recordEquitySnapshot } from "./report/equity-tracker.js";
 import { fetchFundingRatePct } from "./strategy/funding-rate-signal.js";
+import { fetchLongShortRatios } from "./strategy/long-short-signal.js";
 import { getBtcDominanceTrend } from "./strategy/btc-dominance.js";
 import { readEmergencyHalt } from "./news/emergency-monitor.js";
 import { checkEventRisk, loadCalendar } from "./strategy/events-calendar.js";
@@ -131,6 +132,14 @@ async function scanSymbol(
       }
     } catch (e: unknown) { log.warn(`${scenarioPrefix}${symbol}: ⚠️ BTC dominance fetch failed: ${e instanceof Error ? e.message : String(e)}`); }
 
+    // Long/Short ratio (with 5min cache, silently skip on failure)
+    let externalLSRatio: number | undefined;
+    let externalTopLSRatio: number | undefined;
+    try {
+      const lsData = await fetchLongShortRatios(symbol);
+      if (lsData) { externalLSRatio = lsData.globalLSRatio; externalTopLSRatio = lsData.topAccountLSRatio; }
+    } catch (e: unknown) { log.warn(`${scenarioPrefix}${symbol}: ⚠️ L/S ratio fetch failed: ${e instanceof Error ? e.message : String(e)}`); }
+
     // Real CVD (if CvdManager is running and has written to cache, prefer real data)
     try {
       const realCvd = readCvdCache(symbol) as { cvd?: number; updatedAt?: number } | undefined;
@@ -168,6 +177,8 @@ async function scanSymbol(
       ...(externalFundingRate !== undefined ? { fundingRate: externalFundingRate } : {}),
       ...(externalBtcDom !== undefined ? { btcDominance: externalBtcDom } : {}),
       ...(externalBtcDomChange !== undefined ? { btcDomChange: externalBtcDomChange } : {}),
+      ...(externalLSRatio !== undefined ? { longShortRatio: externalLSRatio } : {}),
+      ...(externalTopLSRatio !== undefined ? { topLongShortRatio: externalTopLSRatio } : {}),
       ...(currentPosSide !== undefined ? { currentPosSide } : {}),
       ...(Object.keys(heldKlinesMap).length > 0 ? { heldKlinesMap } : {}),
       ...(onchainSignal !== undefined ? { stablecoinSignal: onchainSignal } : {}),

@@ -643,12 +643,19 @@ export class BinanceClient implements IExchange {
   async marketSell(symbol: string, quantity: number): Promise<OrderResponse> {
     const symbolInfo = await this.getSymbolInfo(symbol);
     const qty = Math.floor(quantity / symbolInfo.stepSize) * symbolInfo.stepSize;
-    return this.createOrder({
+    const order: Parameters<typeof this.createOrder>[0] = {
       symbol,
       side: "SELL",
       type: "MARKET",
       quantity: qty,
-    });
+    };
+    // Futures: add reduceOnly=true to close long position without opening a new short.
+    // Without this, Binance interprets the SELL as opening a new short and returns -2010
+    // when there is insufficient margin.
+    if (this.market === "futures") {
+      order.reduceOnly = true;
+    }
+    return this.createOrder(order);
   }
 
   /**
@@ -659,7 +666,17 @@ export class BinanceClient implements IExchange {
   async marketBuyByQty(symbol: string, quantity: number): Promise<OrderResponse> {
     const symbolInfo = await this.getSymbolInfo(symbol);
     const qty = Math.floor(quantity / symbolInfo.stepSize) * symbolInfo.stepSize;
-    return this.createOrder({ symbol, side: "BUY", type: "MARKET", quantity: qty });
+    const order: Parameters<typeof this.createOrder>[0] = {
+      symbol,
+      side: "BUY",
+      type: "MARKET",
+      quantity: qty,
+    };
+    // Futures: add reduceOnly=true to close short position without opening a new long.
+    if (this.market === "futures") {
+      order.reduceOnly = true;
+    }
+    return this.createOrder(order);
   }
 
   /**

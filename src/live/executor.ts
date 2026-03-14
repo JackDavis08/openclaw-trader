@@ -331,8 +331,44 @@ export class LiveExecutor {
       catch { /* may already be filled or not exist, ignore */ }
     }
     // Cancel native stop loss order (P7.1: prevent orphan orders)
+    // If cancel fails with -2011 (Unknown order), the SL may have already been FILLED on the exchange.
+    // In that case, query the order status and if FILLED, treat the position as already closed locally.
     if (position.exchangeSlOrderId !== undefined) {
-      await this.cancelExchangeStopLoss(symbol, position.exchangeSlOrderId);
+      let slAlreadyFilled = false;
+      try {
+        await this.client.cancelOrder(symbol, position.exchangeSlOrderId);
+      } catch (cancelErr: unknown) {
+        const cancelMsg = cancelErr instanceof Error ? cancelErr.message : String(cancelErr);
+        console.warn(`[LiveExecutor] Cancel native stop loss order failed ${symbol} #${position.exchangeSlOrderId}: ${cancelMsg}`);
+        // -2011 = Unknown order: it may have been triggered. Check order status.
+        if (cancelMsg.includes("-2011") || cancelMsg.includes("Unknown order")) {
+          try {
+            const slOrder = await this.client.getOrder(symbol, position.exchangeSlOrderId);
+            if (slOrder.status === "FILLED") {
+              console.log(`[LiveExecutor] ${symbol} SL order #${position.exchangeSlOrderId} was already FILLED on exchange — syncing local position as closed`);
+              const exitPrice = slOrder.fills && slOrder.fills.length > 0
+                ? slOrder.fills.reduce((s, f) => s + parseFloat(f.price) * parseFloat(f.qty), 0) / parseFloat(slOrder.executedQty)
+                : parseFloat(slOrder.price) || position.stopLoss;
+              const pnl = (exitPrice - position.entryPrice) * position.quantity;
+              const pnlPercent = pnl / (position.entryPrice * position.quantity);
+              if (pnl < 0) account.dailyLoss.loss += Math.abs(pnl);
+              const realBalance = await this.client.getUsdtBalance();
+              account.usdt = realBalance;
+              Reflect.deleteProperty(account.positions, symbol);
+              const trade = orderToPaperTrade(slOrder, "sell", "stop_loss (exchange-triggered, detected on sell)", pnl, pnlPercent);
+              account.trades.push(trade);
+              saveAccount(account, this.scenarioId);
+              const label = this.isTestnet ? "[TESTNET]" : "[LIVE]";
+              console.log(`${label} [SL sync] Sell ${symbol}: qty=${position.quantity.toFixed(6)}, exitPrice=$${exitPrice.toFixed(4)}, PnL=${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (${(pnlPercent * 100).toFixed(2)}%)`);
+              return { trade, stopLossTriggered: true, stopLossTrade: trade, account };
+            }
+          } catch (queryErr: unknown) {
+            console.warn(`[LiveExecutor] Failed to query SL order ${symbol} #${position.exchangeSlOrderId} status:`, queryErr instanceof Error ? queryErr.message : queryErr);
+          }
+        }
+        slAlreadyFilled = false; // continue to try market sell
+      }
+      void slAlreadyFilled; // suppress unused var warning
     } else if (position.stopLossOrderId !== undefined) {
       try { await this.client.cancelOrder(symbol, position.stopLossOrderId); }
       catch { /* may already be filled, ignore */ }

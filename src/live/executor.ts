@@ -380,6 +380,13 @@ export class LiveExecutor {
       order = await this.client.marketSell(symbol, position.quantity, true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      // -2010: Insufficient balance — position was likely already closed on exchange
+      // (e.g. SL order executed but local state not yet synced). Attempt self-heal.
+      if (msg.includes("-2010") || msg.includes("insufficient balance")) {
+        console.warn(`[LiveExecutor] Sell ${symbol}: -2010 insufficient balance, checking if position already closed on exchange...`);
+        const selfHeal = await this.selfHealClosedPosition(symbol, position, account, currentPrice, reason);
+        if (selfHeal) return selfHeal;
+      }
       throw new Error(`[LiveExecutor] Sell ${symbol} failed: ${msg}`, { cause: err });
     }
 
@@ -638,6 +645,12 @@ export class LiveExecutor {
       order = await this.client.marketBuyByQty(symbol, position.quantity, true);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      // -2010: Insufficient balance — short position may already be closed on exchange
+      if (msg.includes("-2010") || msg.includes("insufficient balance")) {
+        console.warn(`[LiveExecutor] Cover short ${symbol}: -2010 insufficient balance, checking if position already closed on exchange...`);
+        const selfHeal = await this.selfHealClosedPosition(symbol, position, account, currentPrice, reason);
+        if (selfHeal) return selfHeal;
+      }
       throw new Error(`[LiveExecutor] Cover short ${symbol} failed: ${msg}`, { cause: err });
     }
 
@@ -1014,6 +1027,90 @@ export class LiveExecutor {
         `[LiveExecutor] Native stop loss order placement failed ${symbol} (${side}):`,
         err instanceof Error ? err.message : err
       );
+      return null;
+    }
+  }
+
+  /**
+   /**
+   * Self-heal: called when a sell/cover fails with -2010 (insufficient balance).
+   * Checks whether the position was already closed on the exchange side (e.g. SL triggered
+   * while local state was stale). If confirmed closed, syncs local state and returns a result
+   * so the caller can return early without rethrowing.
+   * Returns null if we cannot confirm the position is closed (caller should rethrow the error).
+   */
+  private async selfHealClosedPosition(
+    symbol: string,
+    position: import("../paper/account.js").PaperPosition,
+    account: import("../paper/account.js").PaperAccount,
+    currentPrice: number,
+    reason: string
+  ): Promise<LiveEngineResult | null> {
+    const label = this.isTestnet ? "[TESTNET]" : "[LIVE]";
+    try {
+      // Try to get open orders for this symbol — if the SL/TP orders are gone, position is likely closed
+      const openOrders = await this.client.getOpenOrders(symbol);
+      const slOrderId = position.exchangeSlOrderId ?? position.stopLossOrderId;
+      const slStillOpen = slOrderId !== undefined && openOrders.some(o => o.orderId === slOrderId);
+
+      if (!slStillOpen && slOrderId !== undefined) {
+        // SL order not in open orders — likely FILLED. Query status.
+        let exitPrice = currentPrice;
+        try {
+          const slOrder = await this.client.getOrder(symbol, slOrderId);
+          if (slOrder.status === "FILLED") {
+            exitPrice = slOrder.fills && slOrder.fills.length > 0
+              ? slOrder.fills.reduce((s, f) => s + parseFloat(f.price) * parseFloat(f.qty), 0) / parseFloat(slOrder.executedQty)
+              : parseFloat(slOrder.price) || currentPrice;
+          }
+        } catch { /* getOrder failed, use currentPrice as fallback */ }
+
+        const isShort = position.side === "short";
+        const pnl = isShort
+          ? (position.entryPrice - exitPrice) * position.quantity
+          : (exitPrice - position.entryPrice) * position.quantity;
+        const pnlPercent = pnl / (position.entryPrice * position.quantity);
+
+        if (pnl < 0) account.dailyLoss.loss += Math.abs(pnl);
+
+        try {
+          const realBalance = await this.client.getUsdtBalance();
+          account.usdt = realBalance;
+        } catch { /* balance sync failed, keep current */ }
+
+        Reflect.deleteProperty(account.positions, symbol);
+
+        // Create a synthetic trade record
+        const syntheticOrder = {
+          orderId: slOrderId,
+          symbol,
+          side: isShort ? "BUY" : "SELL",
+          type: "STOP_LOSS_LIMIT",
+          status: "FILLED",
+          executedQty: String(position.quantity),
+          price: String(exitPrice),
+          fills: [{ price: String(exitPrice), qty: String(position.quantity), commission: "0", commissionAsset: "USDT" }],
+        } as import("../exchange/binance-client.js").OrderResponse;
+
+        const healReason = `${reason} [self-healed: position already closed on exchange]`;
+        const trade = orderToPaperTrade(syntheticOrder, isShort ? "cover" : "sell", healReason, pnl, pnlPercent);
+        account.trades.push(trade);
+        saveAccount(account, this.scenarioId);
+
+        console.log(
+          `${label} [self-heal] ${symbol} position confirmed closed on exchange. ` +
+          `exitPrice=$${exitPrice.toFixed(4)}, PnL=${pnl >= 0 ? "+" : ""}$${pnl.toFixed(2)} (${(pnlPercent * 100).toFixed(2)}%)`
+        );
+
+        const isStopLoss = reason.includes("stop_loss") || reason.includes("Stop loss");
+        return { trade, stopLossTriggered: isStopLoss, stopLossTrade: isStopLoss ? trade : null, account };
+      }
+
+      // Could not confirm position is closed on exchange
+      console.warn(`${label} [self-heal] ${symbol}: cannot confirm position closed — open orders still present or no SL order. Re-throwing error.`);
+      return null;
+    } catch (healErr: unknown) {
+      console.warn(`${label} [self-heal] ${symbol}: self-heal check failed:`, healErr instanceof Error ? healErr.message : healErr);
       return null;
     }
   }

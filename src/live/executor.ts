@@ -67,13 +67,14 @@ function orderToPaperTrade(
   side: PaperTrade["side"],
   reason: string,
   pnl?: number,
-  pnlPercent?: number
+  pnlPercent?: number,
+  fallbackPrice?: number  // Used when fills=[]/price=0 (Futures Testnet MARKET order quirk)
 ): PaperTrade {
   const avgPrice =
     order.fills && order.fills.length > 0
       ? order.fills.reduce((s, f) => s + parseFloat(f.price) * parseFloat(f.qty), 0) /
         parseFloat(order.executedQty)
-      : parseFloat(order.price);
+      : parseFloat(order.price) || fallbackPrice || 0;
 
   const qty = parseFloat(order.executedQty);
   const commission = order.fills?.reduce((s, f) => s + parseFloat(f.commission), 0) ?? 0;
@@ -296,7 +297,7 @@ export class LiveExecutor {
       ...(takeProfitOrderId !== undefined && { takeProfitOrderId }),
     };
 
-    const trade = orderToPaperTrade(order, "buy", signal.reason.join(", "));
+    const trade = orderToPaperTrade(order, "buy", signal.reason.join(", "), undefined, undefined, signal.price);
     account.trades.push(trade);
     cleanupOrders(account); // Clean up completed orders, avoid state table bloat
     saveAccount(account, this.scenarioId);
@@ -355,7 +356,7 @@ export class LiveExecutor {
               const realBalance = await this.client.getUsdtBalance();
               account.usdt = realBalance;
               Reflect.deleteProperty(account.positions, symbol);
-              const trade = orderToPaperTrade(slOrder, "sell", "stop_loss (exchange-triggered, detected on sell)", pnl, pnlPercent);
+              const trade = orderToPaperTrade(slOrder, "sell", "stop_loss (exchange-triggered, detected on sell)", pnl, pnlPercent, exitPrice);
               account.trades.push(trade);
               saveAccount(account, this.scenarioId);
               const label = this.isTestnet ? "[TESTNET]" : "[LIVE]";
@@ -412,7 +413,7 @@ export class LiveExecutor {
     account.usdt = realBalance;
     Reflect.deleteProperty(account.positions, symbol);
 
-    const trade = orderToPaperTrade(order, "sell", reason, pnl, pnlPercent);
+    const trade = orderToPaperTrade(order, "sell", reason, pnl, pnlPercent, currentPrice);
     account.trades.push(trade);
     saveAccount(account, this.scenarioId);
 
@@ -604,7 +605,7 @@ export class LiveExecutor {
       ...(shortTpOrderId !== undefined && { takeProfitOrderId: shortTpOrderId }),
     };
 
-    const trade = orderToPaperTrade(order, "short", signal.reason.join(", "));
+    const trade = orderToPaperTrade(order, "short", signal.reason.join(", "), undefined, undefined, signal.price);
     account.trades.push(trade);
     cleanupOrders(account);
     saveAccount(account, this.scenarioId);
@@ -670,7 +671,7 @@ export class LiveExecutor {
     account.usdt = realBalance;
     Reflect.deleteProperty(account.positions, symbol);
 
-    const trade = orderToPaperTrade(order, "cover", reason, pnl, pnlPercent);
+    const trade = orderToPaperTrade(order, "cover", reason, pnl, pnlPercent, currentPrice);
     account.trades.push(trade);
     saveAccount(account, this.scenarioId);
 

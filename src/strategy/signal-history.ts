@@ -107,11 +107,17 @@ function readAllRecords(): SignalRecord[] {
 
 function rewriteAll(records: SignalRecord[]): void {
   ensureDir();
-  fs.writeFileSync(LOG_FILE, records.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf-8");
+  // Atomic write: write to temp file first, then rename to avoid data loss on crash
+  const tmpFile = LOG_FILE + ".tmp";
+  const tmpIndex = INDEX_FILE + ".tmp";
+  fs.writeFileSync(tmpFile, records.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf-8");
   // Rebuild index
   const index: Record<string, number> = {};
   records.forEach((r, i) => { index[r.id] = i; });
-  fs.writeFileSync(INDEX_FILE, JSON.stringify(index), "utf-8");
+  fs.writeFileSync(tmpIndex, JSON.stringify(index), "utf-8");
+  // Atomic rename (same filesystem, so rename is atomic on POSIX)
+  fs.renameSync(tmpFile, LOG_FILE);
+  fs.renameSync(tmpIndex, INDEX_FILE);
 }
 
 /** Index: id -> line offset (approximate position, used to accelerate closeSignal) */

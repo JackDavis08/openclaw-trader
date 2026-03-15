@@ -70,7 +70,7 @@ async function main(): Promise<void> {
       maxPairs: 15,
       sortBy: "volume",
       // Exclude common stablecoins and problematic tokens (PEPE on Binance is 1000PEPEUSDT, not PEPEUSDT)
-      blacklist: ["USDCUSDT", "BUSDUSDT", "FDUSDUSDT", "TUSDUSDT", "PEPEUSDT"],
+      blacklist: ["USDCUSDT", "BUSDUSDT", "FDUSDUSDT", "TUSDUSDT", "PEPEUSDT", "OPNUSDT", "NIGHTUSDT"],
       // Always include BTC and ETH
       whitelist: ["BTCUSDT", "ETHUSDT"],
     });

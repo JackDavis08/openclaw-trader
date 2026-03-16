@@ -254,6 +254,20 @@ export class LiveExecutor {
       const label = this.isTestnet ? "[TESTNET]" : "[LIVE]";
       console.warn(`${label} ⚠️ Partial fill ${signal.symbol}: requested ${expectedQty.toFixed(6)}, filled ${execQty.toFixed(6)} (${(fillRatio * 100).toFixed(1)}%)`);
     }
+
+    // 🛡️ Zero fill protection: order accepted but truly no fills — do not record ghost position
+    if (execQty === 0) {
+      const label = this.isTestnet ? "[TESTNET]" : "[LIVE]";
+      console.warn(`${label} ⚠️ Buy ${signal.symbol} order 0 fills, skipping position record (orderId=${order.orderId})`);
+      return {
+        trade: null,
+        skipped: `Buy ${signal.symbol} order not filled (0 fill), orderId=${order.orderId}`,
+        stopLossTriggered: false,
+        stopLossTrade: null,
+        account,
+      };
+    }
+
     confirmOrder(account, order.orderId, execQty, expectedQty);
 
     // Update local account (mirror real state)

@@ -61,6 +61,7 @@
     "asciichart": "^1.5.25",
     "axios": "^1.7.0",
     "better-sqlite3": "^12.6.2",
+    "js-yaml": "^4.1.1",
     "technicalindicators": "^3.1.0",
     "yaml": "^2.4.0"
   },

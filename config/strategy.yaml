@@ -127,13 +127,14 @@ execution:
 # 通知
 # ───────────────────────────────────────
 notify:
-  # Delivery channel: telegram (default) | qqbot
-  channel: telegram
+  # Delivery channel: telegram | qqbot | feishu
+  channel: feishu
   # Delivery target (optional):
   #   telegram: Telegram chat_id  e.g. "6822969897"
-  #   qqbot:    QQ c2c openid     e.g. "qqbot:c2c:A0165E9A7C10D0C8C4C448653C76D8A7"
+  #   qqbot:    QQ c2c openid    e.g. "qqbot:c2c:A0165E9A7C10D0C8C4C448653C76D8A7"
+  #   feishu:   Feishu open_id   e.g. "ou_f14a909e4a44c6273495c43701537876"
   # Leave empty to use openclaw system event routing (AI session).
-  target: ""
+  target: "ou_f14a909e4a44c6273495c43701537876"
   on_signal: true
   on_trade: true
   on_stop_loss: true
@@ -183,6 +184,17 @@ schedule:
     enabled: true
     cron: "*/10 * * * *"  # 每 10 分钟检查突发高危新闻
     timeout_minutes: 15   # 10min cron + 5min 缓冲
+  morning_market_scan:
+    script: "src/scripts/market-analysis.ts"
+    enabled: true
+    cron: "0 1 * * *"     # 每天 01:00 UTC = 09:00 CST 早盘快速扫盘
+    args: ["--quick"]     # 只分析 BTC/ETH/SOL/BNB
+    timeout_minutes: 15   # quick 模式约 10s
+  evening_market_analysis:
+    script: "src/scripts/market-analysis.ts"
+    enabled: true
+    cron: "0 13 * * *"    # 每天 13:00 UTC = 21:00 CST 晚盘深度分析
+    timeout_minutes: 35  # 完整分析约 30s
   pairlist_refresh:
     script: "src/scripts/refresh-pairlist.ts"
     enabled: true

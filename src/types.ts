@@ -240,7 +240,7 @@ export interface ExecutionConfig {
 
 export interface NotifyConfig {
   /** Delivery channel: "telegram" (default) | "qqbot" */
-  channel?: "telegram" | "qqbot";
+  channel?: "telegram" | "qqbot" | "feishu";
   /**
    * Delivery target.
    * - telegram: Telegram chat_id (e.g. "6822969897")

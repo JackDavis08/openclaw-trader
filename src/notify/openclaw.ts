@@ -16,10 +16,11 @@ let _target: string = process.env["NOTIFY_TARGET"] ?? "";
  * Configure the notification delivery channel at runtime.
  * Call once during monitor startup (after loading RuntimeConfig).
  *
- * @param channel  "telegram" (default) | "qqbot"
+ * @param channel  "telegram" (default) | "qqbot" | "feishu"
  * @param target   Delivery target:
  *                 - telegram: Telegram chat_id (e.g. "6822969897")
  *                 - qqbot:    QQ c2c openid (e.g. "qqbot:c2c:XXXX")
+ *                 - feishu:   Feishu open_id (e.g. "ou_XXXX")
  *                 If empty, falls back to openclaw system event routing.
  */
 export function configureNotify(channel: string, target: string): void {

@@ -66,6 +66,7 @@ const _errorLastNotified = new Map<string, number>();
  * Used when channel + target are explicitly configured.
  */
 function sendDirectToChannel(text: string): void {
+  console.log(`[DEBUG] sendDirectToChannel called with channel=${_channel}, target=${_target}`);
   try {
     const args = [
       "message", "send",

@@ -699,6 +699,7 @@ async function main(): Promise<void> {
     return;
   }
 
+  console.log(`[DEBUG] notify.channel=${firstRuntime.notify.channel}, notify.target=${firstRuntime.notify.target}`);
   configureNotify(firstRuntime.notify.channel ?? "telegram", firstRuntime.notify.target ?? "");
 
   const mode = firstRuntime.mode;

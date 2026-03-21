@@ -35,7 +35,8 @@ import { shouldConfirmExit, isExitRejectionCoolingDown } from "../strategy/confi
 import type { Strategy, StrategyContext } from "../strategies/types.js";
 import type { ExitReason } from "../paper/engine.js";
 import type { ExchangePosition } from "./reconcile.js";
-import { sendTelegramMessage } from "../notify/openclaw.js";
+import { sendTelegramMessage, configureNotify } from "../notify/openclaw.js";
+import { loadStrategyConfig } from "../config/loader.js";
 
 // Trigger forced market exit after N consecutive exit order timeouts
 const EXIT_TIMEOUT_MAX_RETRIES = 3;
@@ -114,6 +115,10 @@ export class LiveExecutor {
   private readonly _exitRejectionLog = new Map<string, number>();
 
   constructor(cfg: RuntimeConfig, exchange?: IExchange) {
+    // Configure notification channel from strategy config (apply once, globally)
+    const baseCfg = loadStrategyConfig();
+    configureNotify(baseCfg.notify.channel ?? "telegram", baseCfg.notify.target ?? "");
+
     this.cfg = cfg;
     this.scenarioId = cfg.paper.scenarioId;
     this.isTestnet = cfg.exchange.testnet ?? false;

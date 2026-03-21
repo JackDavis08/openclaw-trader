@@ -673,6 +673,7 @@ async function main(): Promise<void> {
   const paperCfg = loadPaperConfig();
 
   // Configure notification channel from strategy config (apply once, globally)
+  console.log(`[DEBUG] notify.channel=${base.notify.channel}, notify.target=${base.notify.target}`);
   configureNotify(base.notify.channel ?? "telegram", base.notify.target ?? "");
 
   // CLI arguments

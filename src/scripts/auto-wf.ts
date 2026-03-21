@@ -20,7 +20,8 @@
  */
 
 import { runAutoWalkForward, formatAutoWfReport, loadAutoWfState } from "../optimization/auto-wf.js";
-import { sendTelegramMessage } from "../notify/openclaw.js";
+import { sendTelegramMessage, configureNotify } from "../notify/openclaw.js";
+import { loadStrategyConfig } from "../config/loader.js";
 
 // ─────────────────────────────────────────────────────
 // CLI Argument Parsing
@@ -121,6 +122,10 @@ export function parseArgs(argv: string[]): CliArgs {
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
+
+  // Configure notification channel from strategy config
+  const cfg = loadStrategyConfig();
+  configureNotify(cfg.notify.channel ?? "telegram", cfg.notify.target ?? "");
 
   // Schedule guard: skip if last run was too recent
   if (args.schedule) {

@@ -16,17 +16,16 @@ accounts:
       stop_loss_percent: 5
       take_profit_percent: 10
 
-  # 期货测试网账户 - ITS v4.0
+  # 期货测试网账户 - ITS v4.1
   - id: binance-futures-testnet
     provider: binance
     credentials_path: .secrets/binance-futures-testnet.json
     testnet: true
     scenarios:
-      - futures-long-short    # ITS v4.0 双向策略
-      - aggressive-scalp      # 激进套利策略
+      - futures-long-short    # ITS v4.1 双向策略
     risk:
-      position_ratio: 0.20
-      max_positions: 3
+      position_ratio: 0.25
+      max_positions: 5
       stop_loss_percent: 0.5
       take_profit_percent: 2
       trailing_stop:

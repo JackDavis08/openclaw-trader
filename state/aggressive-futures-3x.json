@@ -1,0 +1,15 @@
+{
+  "updatedAt": 1774630240747,
+  "balance": 4557.70338189,
+  "positions": {
+    "SOLUSDT": {
+      "side": "short",
+      "qty": 17.43,
+      "entryPrice": 86.17,
+      "entryTime": 1774593684077,
+      "currentPrice": 82.95452068,
+      "unrealizedPnl": 0,
+      "scenarioId": "aggressive-futures-3x"
+    }
+  }
+}

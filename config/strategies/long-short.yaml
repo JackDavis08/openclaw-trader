@@ -1,9 +1,9 @@
-# 双向策略 ITS v4.5：牛市做多 + 熊市做空
+# 双向策略 ITS v4.5 高频交易模式
 # 市场类型：futures / margin（spot 只有多头生效）
-# 适合：适应性强，无论涨跌均可捕捉趋势
-# 更新：2026-03-29 整合 zeneo-ai/crypto-trader 所有信号条件
-name: "双向趋势策略 ITS v4.5"
-description: "MA+RSI+VWAP+CVD+资金费率+多空比 10重信号确认 + 市场自适应参数"
+# 目标：快速获取信号 + 多次交易 + 单笔少量获利
+# 更新：2026-03-29 调整为高频交易模式
+name: "ITS v4.5 高频策略"
+description: "MA+RSI 双条件确认 + 快进快出 + ROI时间衰减止盈"
 
 timeframe: "1h"
 trend_timeframe: "4h"
@@ -40,70 +40,48 @@ strategy:
     short_biased_threshold: 0.8    # 做空偏重
 
 # ─────────────────────────────────────────────────
-# 入场信号（ITS V4.5 增强版：多条件确认）
-# 多头：MA多头 + RSI 未超买 + VWAP确认 + CVD确认
-# 平多：均线空头 或 RSI 超买
-# 开空：均线空头 + RSI 未超卖 + VWAP确认
-# 平空：均线多头 或 RSI 超卖
+# 入场信号（ITS V4.5 高频交易模式）
+# 目标：快速获取信号 + 多次交易 + 单笔少量获利
 # ─────────────────────────────────────────────────
 signals:
   buy:
-    - ma_bullish             # EMA20 > EMA60（4h 趋势向上）
+    - ma_bullish             # EMA20 > EMA60（趋势确认）
     - rsi_not_overbought     # RSI < 70（未超买）
-    # 增强条件（V4.5新增）：
-    - price_above_vwap       # 价格在VWAP上方（机构看多）
-    - cvd_bullish            # CVD正值（买入压力）
   sell:
     - ma_bearish             # 趋势反转，平多
     - rsi_overbought         # RSI > 70 超买，平多
-    - price_above_vwap_upper2  # 价格超过VWAP+2σ，止盈
   short:
-    - ma_bearish             # EMA20 < EMA60（4h 趋势向下）
-    - rsi_not_oversold       # RSI > 30（未超卖，避免底部追空）
-    # 增强条件（V4.5新增）：
-    - price_below_vwap       # 价格在VWAP下方（机构看空）
-    - cvd_bearish            # CVD负值（卖出压力）
+    - ma_bearish             # EMA20 < EMA60（趋势向下）
+    - rsi_not_oversold       # RSI > 30（未超卖）
   cover:
     - ma_bullish             # 趋势反转，平空
     - rsi_oversold           # RSI < 30 超卖，平空
-    - price_below_vwap_lower2   # 价格跌破VWAP-2σ，超卖信号
 
 risk:
-  # ── 止盈止损（核心参数）─────────────────────────
-  stop_loss_percent: 0.5    # 止损0.5%，严格截断亏损
-  take_profit_percent: 2    # 总止盈目标2%（分批1.5%+2.5%）
-  take_profit_1: 1.5       # 第一批止盈1.5%（50%仓位）
-  take_profit_2: 2.5       # 第二批止盈2.5%（50%仓位）
+  # ── 止盈止损（高频交易模式）─────────────────────
+  stop_loss_percent: 0.3    # 止损0.3%（更紧截断亏损）
+  take_profit_percent: 0.8  # 总止盈目标0.8%（快速获利）
+  take_profit_1: 0.5       # 第一批止盈0.5%（50%仓位）
+  take_profit_2: 0.8       # 第二批止盈0.8%（50%仓位）
 
-  # ── 最小盈亏比过滤（新增）──────────────────────
-  # 只有 R:R >= 0.3 才开仓（盈利空间 ≥ 0.3×止损空间）
-  # 对于快进快出策略，降低要求以增加交易机会
-  min_rr: 0.3
+  # ── 最小盈亏比过滤─────────────────────────────
+  min_rr: 0.2              # 降低要求增加交易机会
 
-  # ── ROI 时间衰减止盈（新增）─────────────────────
-  # 持仓越久目标越低，避免"涨了又跌回来"
-  # 启用后优先于 take_profit_percent
-  # 格式："N" = N分钟后的目标收益率，0 = 开仓即生效
+  # ── ROI 时间衰减止盈（快速模式）─────────────────
   minimal_roi:
-    "0":    0.03        # 0-30min：等3%再走
-    "30":   0.02        # 30-60min：等2%就走
-    "60":   0.015       # 1-2h：等1.5%就走
-    "120":  0.005       # >2h：等0.5%就走（保本为主）
+    "0":    0.005        # 开仓等0.5%就走
+    "5":    0.003        # 5分钟：等0.3%就走
+    "15":   0.002        # 15分钟：等0.2%就走
+    "30":   0.001        # 30分钟：等0.1%就走（保本）
 
   # ── 移动止损 ──────────────────────────────────
   trailing_stop:
     enabled: true
-    activation_percent: 0.5    # 盈利0.5%即激活（更早锁定）
-    callback_percent: 0.5      # 回调0.5%止损
+    activation_percent: 0.2    # 盈利0.2%即激活
+    callback_percent: 0.2      # 回调0.2%止损
 
-  # ── 增强型移动止损（新增）──────────────────────
-  # 盈利超过X%时，切换更紧的移动止损
-  trailing_stop_positive: 0.01          # 激活后切换为1%更紧trailing
-  trailing_stop_positive_offset: 0.02   # 盈利超过2%时激活positive trailing
-  trailing_only_offset_is_reached: true # offset达到前不激活trailing
-
-  # ── 仓位管理 ──────────────────────────────────
-  position_ratio: 0.25       # 单笔仓位25%（4x杠杆=100%仓位）
+  # ── 仓位管理（高频交易）─────────────────────────
+  position_ratio: 0.20       # 单笔仓位20%（4x杠杆=80%仓位）
   max_positions: 5           # 最多同时持有5个仓位
   min_positions: 2           # 最少保持2个仓位
   max_position_per_symbol: 0.25  # 单币种不超过25%仓位
@@ -126,26 +104,25 @@ risk:
     btc_strong_up_trigger: true  # BTC强势时减少其他空单
 
 # ─────────────────────────────────────────────────
-# 市场自适应参数 regime_overrides（新增）
-# 当检测到震荡市/高波动市时，自动切换参数
+# 市场自适应参数 regime_overrides（高频交易模式）
 # ─────────────────────────────────────────────────
 regime_overrides:
   reduced_size:              # 震荡高波动市：快进快出
-    take_profit_percent: 3
-    stop_loss_percent: 0.5
-    position_ratio: 0.15    # 仓位缩小
+    take_profit_percent: 0.8
+    stop_loss_percent: 0.3
+    position_ratio: 0.15
     minimal_roi:
-      "0":   0.02        # 开仓等2%
-      "30":  0.01        # 30min等1%
-      "60":  0.005       # 1h等0.5%
-  breakout_watch:           # 低波动震荡市：不拒绝信号，降低仓位继续交易
-    take_profit_percent: 2
-    stop_loss_percent: 0.3  # 更紧止损
-    position_ratio: 0.15   # 仓位15%（4x杠杆=60%仓位）
+      "0":   0.005       # 开仓等0.5%
+      "5":   0.003       # 5min等0.3%
+      "15":  0.002       # 15min等0.2%
+  breakout_watch:           # 低波动震荡市：继续交易
+    take_profit_percent: 0.5
+    stop_loss_percent: 0.2
+    position_ratio: 0.15
     minimal_roi:
-      "0":   0.015       # 开仓等1.5%
-      "15":  0.01        # 15min等1%
-      "30":  0.005       # 30min等0.5%
+      "0":   0.003       # 开仓等0.3%
+      "5":   0.002       # 5min等0.2%
+      "10":  0.001       # 10min等0.1%
 
 # ─────────────────────────────────────────────────
 # 保护机制 protections（新增）

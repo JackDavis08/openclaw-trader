@@ -2,9 +2,10 @@ const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
 const fs = require('fs');
+const path = require('path');
 
-const API_KEY = 'hmvetrF95qH8N0zChIVYgiDZrrFAv7IWcpSLuuDWAOi0BxFg61xJL9uJBbscBKHX';
-const SECRET = 'GZc933rXKWuauD6yTFCKrkN0n6w7wlVXJ8Tk2DuqrCnIMb5Xq4IuFYyPyUt9Wjt4';
+const API_KEY = '5xFjz1Jt04FVKh7pNuQyiRKhYpGvgK0YaPgldYrYgrmBUBcAN9Lg10ypycRJaY4j';
+const SECRET = '7vbksMwunENMRYQY6Xr3GEW3JwkEgjww7amOsAtQpk7FY47Ye26btJeHXbQBq1dj';
 
 function apiReq(path, params) {
   return new Promise((resolve, reject) => {
@@ -36,6 +37,32 @@ async function getStatus() {
       apiReq('/fapi/v2/positionRisk'),
       apiReq('/fapi/v2/userTrades', {limit: 50})
     ]);
+
+    // Read local account file to get total trade count (all historical trades)
+    let totalTradeCount = 0;
+    let totalWinCount = 0;
+    try {
+      const accountPaths = [
+        path.join(__dirname, 'openclaw-trader', 'logs', 'paper-binance-futures-testnet-futures-long-short.json'),
+        path.join(__dirname, 'openclaw-trader', 'logs', 'paper-futures-long-short.json'),
+        path.join(__dirname, 'logs', 'paper-binance-futures-testnet-futures-long-short.json'),
+        path.join(__dirname, 'logs', 'paper-futures-long-short.json'),
+      ];
+      for (const accountPath of accountPaths) {
+        if (fs.existsSync(accountPath)) {
+          const accountData = JSON.parse(fs.readFileSync(accountPath, 'utf8'));
+          const allTrades = Array.isArray(accountData.trades) ? accountData.trades : [];
+          totalTradeCount = allTrades.length;
+          // Count closed trades (sell/cover with pnl defined) that are winners
+          const closedTrades = allTrades.filter(t => 
+            (t.side === 'sell' || t.side === 'cover') && t.pnl !== undefined && t.pnl !== null
+          );
+          totalWinCount = closedTrades.filter(t => (t.pnl ?? 0) > 0).length;
+          console.log('[DEBUG] Account file:', accountPath, 'trades:', totalTradeCount, 'wins:', totalWinCount);
+          break;
+        }
+      }
+    } catch (e) { console.log('[DEBUG] Account file error:', e.message); }
 
     const usdt = Array.isArray(bal) ? bal.find(a => a.asset === 'USDT') : {availableBalance: '0', crossWalletBalance: '0'};
     const bal2 = parseFloat(usdt?.availableBalance || '0');
@@ -73,8 +100,11 @@ async function getStatus() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tradeList = Array.isArray(trades) ? trades : [];
+    // totalTrades: ALL historical trades from the 50 recent trades API
+    const totalTrades = tradeList.length;
     const todayTrades = tradeList.filter(t => new Date(t.time || 0) >= today);
     const winTrades = todayTrades.filter(t => parseFloat(t.realizedPnl || 0) > 0);
+    const totalWinTrades = tradeList.filter(t => parseFloat(t.realizedPnl || 0) > 0);
 
     return {
       balance: bal2.toFixed(2),
@@ -85,8 +115,8 @@ async function getStatus() {
       totalAccountPnlPct: (totalAccPnl / initBalance * 100).toFixed(2),
       positions: positions,
       posCount: positions.length,
-      tradeCount: todayTrades.length,
-      winCount: winTrades.length,
+      tradeCount: totalTradeCount,  // total trades from local account file
+      winCount: totalWinCount,       // total winning closed trades
       timestamp: Date.now()
     };
   } catch (e) {

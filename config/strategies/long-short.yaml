@@ -1,11 +1,12 @@
-# 双向策略：牛市做多 + 熊市做空
+# 双向策略 ITS v4.0：牛市做多 + 熊市做空
 # 市场类型：futures / margin（spot 只有多头生效）
 # 适合：适应性强，无论涨跌均可捕捉趋势
-name: "双向趋势策略"
-description: "MA 趋势多空两用：多头时做多，空头时做空（4h，去掉 MACD 过滤）"
+# 更新：2026-03-29 整合 GitHub 最新功能
+name: "双向趋势策略 ITS v4.0"
+description: "MA 趋势多空两用 + 6重信号确认 + 市场自适应参数"
 
-timeframe: "4h"
-trend_timeframe: "1d"
+timeframe: "1h"
+trend_timeframe: "4h"
 
 strategy:
   ma:
@@ -13,42 +14,136 @@ strategy:
     long: 60
   rsi:
     period: 14
-    oversold: 30          # 4h 时间框架放宽：避免在超卖区间把空单信号也挡掉
-    overbought: 70        # 4h 时间框架放宽：更大趋势才算超买
+    oversold: 30          # 超卖区域（做多信号用）
+    overbought: 70        # 超买区域（做空信号用）
   macd:
-    enabled: true         # 保留计算（用于日志/指标），但不作为入场条件
+    enabled: true         # 保留计算（用于日志/指标），但不做入场条件
     fast: 12
     slow: 26
     signal: 9
   volume:
-    surge_ratio: 1.5
-    low_ratio: 0.5
+    surge_ratio: 1.5      # 成交量放大1.5倍确认
+    low_ratio: 0.5       # 缩量不参与
 
-# 多头：均线多头 + RSI 未超买（4h 高质量信号）
+# ─────────────────────────────────────────────────
+# 入场信号（6重确认）
+# 多头：均线多头 + RSI 未超买 + 成交量 + MACD动能
 # 平多：均线空头
-# 开空：均线空头 + RSI 未超卖（避免底部追空）
-# 平空：均线多头（趋势反转）
+# 开空：均线空头 + RSI 未超卖
+# 平空：均线多头
+# ─────────────────────────────────────────────────
 signals:
   buy:
     - ma_bullish           # EMA20 > EMA60（4h 趋势向上）
     - rsi_not_overbought   # RSI < 70（未超买）
+    - volume_confirmed     # 成交量放大确认
+    - macd_bullish        # MACD 柱状图 > 0（动能向上）
   sell:
     - ma_bearish           # 趋势反转，平多
   short:
     - ma_bearish           # EMA20 < EMA60（4h 趋势向下）
     - rsi_not_oversold     # RSI > 30（未超卖，避免底部追空）
+    - volume_confirmed     # 成交量放大确认
+    - macd_bearish        # MACD 柱状图 < 0（动能向下）
   cover:
     - ma_bullish           # 趋势反转，平空
 
 risk:
-  stop_loss_percent: 5
-  take_profit_percent: 15
+  # ── 止盈止损（核心参数）─────────────────────────
+  stop_loss_percent: 0.5    # 止损0.5%，严格截断亏损
+  take_profit_percent: 2    # 总止盈目标2%（分批1.5%+2.5%）
+  take_profit_1: 1.5       # 第一批止盈1.5%（50%仓位）
+  take_profit_2: 2.5       # 第二批止盈2.5%（50%仓位）
+
+  # ── 最小盈亏比过滤（新增）──────────────────────
+  # 只有 R:R >= 1.5 才开仓（盈利空间 ≥ 1.5×止损空间）
+  min_rr: 1.5
+
+  # ── ROI 时间衰减止盈（新增）─────────────────────
+  # 持仓越久目标越低，避免"涨了又跌回来"
+  # 启用后优先于 take_profit_percent
+  # 格式："N" = N分钟后的目标收益率，0 = 开仓即生效
+  minimal_roi:
+    "0":    0.03        # 0-30min：等3%再走
+    "30":   0.02        # 30-60min：等2%就走
+    "60":   0.015       # 1-2h：等1.5%就走
+    "120":  0.005       # >2h：等0.5%就走（保本为主）
+
+  # ── 移动止损 ──────────────────────────────────
   trailing_stop:
     enabled: true
-    activation_percent: 7
-    callback_percent: 2.5
-  position_ratio: 0.18       # 双向策略单笔仓位稍小
-  max_positions: 4           # 多空合计不超过 4 个
-  max_position_per_symbol: 0.25
-  max_total_loss_percent: 20
-  daily_loss_limit_percent: 8
+    activation_percent: 0.5    # 盈利0.5%即激活（更早锁定）
+    callback_percent: 0.5      # 回调0.5%止损
+
+  # ── 增强型移动止损（新增）──────────────────────
+  # 盈利超过X%时，切换更紧的移动止损
+  trailing_stop_positive: 0.01          # 激活后切换为1%更紧trailing
+  trailing_stop_positive_offset: 0.02   # 盈利超过2%时激活positive trailing
+  trailing_only_offset_is_reached: true # offset达到前不激活trailing
+
+  # ── 仓位管理 ──────────────────────────────────
+  position_ratio: 0.25       # 单笔仓位25%（4x杠杆=100%仓位）
+  max_positions: 5           # 最多同时持有5个仓位
+  min_positions: 2           # 最少保持2个仓位
+  max_position_per_symbol: 0.25  # 单币种不超过25%仓位
+
+  # ── 风控熔断 ──────────────────────────────────
+  max_total_loss_percent: 20   # 全账户回撤20%停止交易
+  daily_loss_limit_percent: 8  # 单日亏损8%停止交易
+
+  # ── 相关性过滤（新增）──────────────────────────
+  # 避免在高相关性币种上同时持仓
+  correlation_filter:
+    enabled: true
+    threshold: 0.70         # 相关性阈值70%
+    lookback: 60            # 回看60根K线
+
+  # ── BTC对冲保护 ────────────────────────────────
+  # BTC强势上涨时，减少其他币种的空单
+  btc_hedge:
+    enabled: true
+    btc_strong_up_trigger: true  # BTC强势时减少其他空单
+
+# ─────────────────────────────────────────────────
+# 市场自适应参数 regime_overrides（新增）
+# 当检测到震荡市/高波动市时，自动切换参数
+# ─────────────────────────────────────────────────
+regime_overrides:
+  reduced_size:              # 震荡高波动市：快进快出
+    take_profit_percent: 3
+    stop_loss_percent: 0.5
+    position_ratio: 0.15    # 仓位缩小
+    minimal_roi:
+      "0":   0.02        # 开仓等2%
+      "30":  0.01        # 30min等1%
+      "60":  0.005       # 1h等0.5%
+
+# ─────────────────────────────────────────────────
+# 保护机制 protections（新增）
+# 止损后自动进入冷却期，防止连续亏损
+# ─────────────────────────────────────────────────
+protections:
+  cooldown:                 # 止损后冷却
+    enabled: true
+    stop_duration_candles: 5        # 冷却5根K线
+
+  stoploss_guard:           # 止损次数保护
+    enabled: true
+    lookback_period_candles: 48     # 回看48根K线
+    trade_limit: 3                  # 窗口内止损次数上限
+    stop_duration_candles: 12      # 暂停12根K线
+    only_per_pair: false            # false=全局止损计数
+
+  max_drawdown:            # 最大回撤保护
+    enabled: true
+    lookback_period_candles: 48
+    trade_limit: 3
+    max_allowed_drawdown: 0.15     # 总亏损超过15%时暂停
+    stop_duration_candles: 12
+
+  low_profit_pairs:        # 低利润币种过滤
+    enabled: true
+    lookback_period_candles: 48
+    trade_limit: 3
+    required_profit: 0.0           # 平均不亏损才允许
+    stop_duration_candles: 12

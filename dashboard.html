@@ -3,190 +3,293 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OpenClaw Trading System v4.0</title>
+<title>ITS V4.1 智能量化交易系统</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:Segoe UI,Microsoft YaHei,sans-serif;background:linear-gradient(135deg,#0a0f1c,#1a1f3c);color:#e2e8f0;min-height:100vh;padding:20px}
-.c{max-width:1600px;margin:0 auto}
-.h{background:linear-gradient(135deg,#1e293b,#0f172a);border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:24px 32px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center}
+body{font-family:Segoe UI,Microsoft YaHei,sans-serif;background:linear-gradient(135deg,#0a0f1c 0%,#1a1f3c 50%,#0d1225 100%);color:#e2e8f0;min-height:100vh;padding:20px}
+.c{max-width:1700px;margin:0 auto}
+
+/* Header */
+.h{background:linear-gradient(135deg,rgba(30,41,59,0.8),rgba(15,23,42,0.9));border:1px solid rgba(255,255,255,0.1);border-radius:20px;padding:24px 32px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;backdrop-filter:blur(10px)}
 .hl{display:flex;align-items:center;gap:20px}
 .logo{font-size:48px}
-.ti{font-size:28px;font-weight:800;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.sub{font-size:12px;color:#64748b;margin-top:4px}
+.ti{font-size:30px;font-weight:900;background:linear-gradient(135deg,#60a5fa,#a78bfa,#f472b6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px}
+.sub{font-size:12px;color:#64748b;margin-top:4px;display:flex;gap:8px}
+.sub span{background:rgba(59,130,246,0.2);padding:2px 10px;border-radius:10px;color:#60a5fa}
 .hr{text-align:right}
 .live{display:inline-flex;align-items:center;gap:10px;background:rgba(16,185,129,0.15);border:1px solid #10b981;color:#10b981;padding:8px 20px;border-radius:25px;font-size:13px;font-weight:700}
 .dot{width:10px;height:10px;background:#10b981;border-radius:50%;animation:pulse 2s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
-.clock{font-size:32px;font-weight:800;color:#f8fafc;font-variant-numeric:tabular-nums;margin-top:6px}
-.sb{background:linear-gradient(135deg,rgba(59,130,246,0.15),rgba(139,92,246,0.15));border:1px solid rgba(59,130,246,0.3);border-radius:16px;padding:16px 28px;margin-bottom:20px;display:flex;flex-wrap:wrap;gap:24px;align-items:center}
-.si{display:flex;align-items:center;gap:8px}
-.sl{font-size:12px;color:#64748b}
+.clock{font-size:36px;font-weight:900;color:#f8fafc;font-variant-numeric:tabular-nums;margin-top:6px;text-shadow:0 0 20px rgba(96,165,250,0.5)}
+
+/* Strategy Bar */
+.sb{background:linear-gradient(135deg,rgba(59,130,246,0.12),rgba(139,92,246,0.08),rgba(244,114,182,0.05));border:1px solid rgba(59,130,246,0.2);border-radius:16px;padding:14px 28px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:20px;align-items:center}
+.si{display:flex;align-items:center;gap:6px}
+.sl{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px}
 .sv{font-size:14px;font-weight:700;color:#60a5fa}
-.rb{height:5px;background:rgba(255,255,255,0.05);border-radius:3px;margin-bottom:20px;overflow:hidden}
-.rf{height:100%;background:linear-gradient(90deg,#3b82f6,#10b981,#f59e0b);border-radius:3px;width:0%;transition:width 1s linear}
-.g{display:grid;grid-template-columns:repeat(7,1fr);gap:16px;margin-bottom:20px}
-.k{background:linear-gradient(145deg,#1e293b,#0f172a);border-radius:20px;padding:20px;border:1px solid rgba(255,255,255,0.08)}
+.sv.pro{color:#10b981}
+.sv.neg{color:#ef4444}
+.si.lv{border-left:1px solid rgba(255,255,255,0.1);padding-left:20px}
+
+/* Refresh Bar */
+.rb{height:4px;background:rgba(255,255,255,0.05);border-radius:2px;margin-bottom:16px;overflow:hidden}
+.rf{height:100%;background:linear-gradient(90deg,#3b82f6,#10b981,#f59e0b,#ec4899);background-size:300% 100%;border-radius:2px;width:0%;transition:width 1s linear;animation:gradient 3s ease infinite}
+@keyframes gradient{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+
+/* KPI Cards */
+.g{display:grid;grid-template-columns:repeat(7,1fr);gap:14px;margin-bottom:16px}
+.k{background:linear-gradient(145deg,rgba(30,41,59,0.7),rgba(15,23,42,0.8));border-radius:20px;padding:20px;border:1px solid rgba(255,255,255,0.08);transition:all 0.3s;position:relative;overflow:hidden}
+.k:hover{transform:translateY(-3px);border-color:rgba(96,165,250,0.3);box-shadow:0 10px 40px rgba(0,0,0,0.3)}
+.k::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,#3b82f6,#8b5cf6,#ec4899);opacity:0;transition:opacity 0.3s}
+.k:hover::before{opacity:1}
 .ic{font-size:28px;margin-bottom:10px}
 .lb{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
-.v{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums}
+.v{font-size:26px;font-weight:900;font-variant-numeric:tabular-nums}
 .gn{color:#10b981}
 .rd{color:#ef4444}
 .wt{color:#f1f5f9}
-.bl{color:#3b82f6}
+.bl{color:#60a5fa}
 .mt{font-size:10px;color:#475569;margin-top:6px}
 .k.gn{border-color:rgba(16,185,129,0.3)}
 .k.rd{border-color:rgba(239,68,68,0.3)}
-.mg{display:grid;grid-template-columns:2fr 1fr;gap:20px}
-.se{background:linear-gradient(145deg,#1e293b,#0f172a);border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.08)}
-.sh{background:rgba(59,130,246,0.1);padding:16px 24px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.06)}
-.st{font-size:16px;font-weight:700;color:#f8fafc}
-.sc{background:rgba(245,158,11,0.15);color:#f59e0b;padding:4px 12px;border-radius:15px;font-size:12px;font-weight:700}
+.k.bl{border-color:rgba(96,165,250,0.3)}
+
+/* Main Grid */
+.mg{display:grid;grid-template-columns:1fr 400px;gap:20px}
+
+/* Panel */
+.se{background:linear-gradient(145deg,rgba(30,41,59,0.7),rgba(15,23,42,0.8));border-radius:20px;overflow:hidden;border:1px solid rgba(255,255,255,0.08)}
+.sh{background:linear-gradient(90deg,rgba(59,130,246,0.15),rgba(139,92,246,0.08));padding:18px 24px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,0.06)}
+.st{font-size:16px;font-weight:700;color:#f8fafc;display:flex;align-items:center;gap:10px}
+.st span{font-size:22px}
+.sc{background:linear-gradient(135deg,rgba(245,158,11,0.3),rgba(245,158,11,0.1));color:#f59e0b;padding:6px 14px;border-radius:15px;font-size:13px;font-weight:700;min-width:32px;text-align:center}
+.sc.full{background:linear-gradient(135deg,rgba(239,68,68,0.3),rgba(239,68,68,0.1));color:#ef4444}
+.sc.active{background:linear-gradient(135deg,rgba(16,185,129,0.3),rgba(16,185,129,0.1));color:#10b981}
 .pc{padding:20px}
-.pcg{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
-.pcard{background:linear-gradient(145deg,#1e293b,#0f172a);border-radius:14px;padding:16px;border:1px solid rgba(255,255,255,0.1);cursor:pointer;transition:all 0.2s}
-.pcard:hover{border-color:rgba(255,255,255,0.2)}
-.pcard.ln{border-left:4px solid #10b981}
-.pcard.sh{border-left:4px solid #ef4444}
-.ph{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
-.psym{font-size:18px;font-weight:800}
-.pdir{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700}
-.pdir.ln{background:rgba(16,185,129,0.15);color:#10b981}
-.pdir.sh{background:rgba(239,68,68,0.15);color:#ef4444}
-.pm{text-align:center;padding:16px 0}
-.pmv{font-size:36px;font-weight:900}
-.pmp{font-size:12px;margin-top:4px;opacity:0.7}
-.pfg{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,0.05);border-radius:10px;overflow:hidden}
-.pfg>div{background:rgba(15,23,42,0.8);padding:10px 6px;text-align:center}
-.pcl{font-size:9px;color:#475569;text-transform:uppercase;margin-bottom:4px}
-.pcv{font-size:13px;font-weight:700}
-.pfo{display:flex;justify-content:space-between;padding:10px;background:rgba(0,0,0,0.2);border-radius:8px;font-size:11px;color:#475569;margin-top:10px}
-.pfo span{color:#60a5fa;font-weight:600}
-.pde{display:none;margin-top:12px;padding:12px;background:rgba(0,0,0,0.15);border-radius:10px}
-.pde.ov{display:block}
-.pdr{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.03);font-size:12px}
-.pdr:last-child{border:none}
-.pdl{color:#64748b}
-.pdv{font-weight:600}
+
+/* Position Cards */
+.pos-grid{display:flex;flex-direction:column;gap:12px}
+.pcard{background:linear-gradient(145deg,rgba(30,41,59,0.8),rgba(15,23,42,0.9));border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,0.1);transition:all 0.3s;cursor:pointer}
+.pcard:hover{border-color:rgba(255,255,255,0.25);transform:translateY(-2px);box-shadow:0 8px 32px rgba(0,0,0,0.3)}
+.pcard.ln{border-top:3px solid #10b981}
+.pcard.sh{border-top:3px solid #ef4444}
+.phead{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;background:rgba(0,0,0,0.2)}
+.psym{font-size:20px;font-weight:900;letter-spacing:1px}
+.pdir{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px}
+.pdir.ln{background:rgba(16,185,129,0.2);color:#10b981}
+.pdir.sh{background:rgba(239,68,68,0.2);color:#ef4444}
+.parrow{font-size:14px;transition:transform 0.3s;display:inline-block}
+.pcard.expanded .parrow{transform:rotate(180deg)}
+.pmain{display:flex;padding:16px 20px;gap:20px;align-items:center}
+.pmleft{flex:1}
+.pmcenter{text-align:center;min-width:130px}
+.pmright{text-align:right;min-width:100px}
+.pmv{font-size:34px;font-weight:900}
+.pmp{font-size:13px;margin-top:4px;opacity:0.8}
+.pmstat{display:flex;flex-direction:column;gap:4px}
+.pmstat span{font-size:12px}
+.pmstat .lbl{color:#64748b}
+.pmstat .val{font-weight:700}
+.pmini{display:flex;justify-content:space-between;padding:0 20px 16px;gap:10px}
+.pmb{background:rgba(255,255,255,0.03);border-radius:10px;padding:10px 14px;flex:1;text-align:center}
+.pmb .lbl{font-size:10px;color:#475569;text-transform:uppercase;margin-bottom:4px}
+.pmb .val{font-size:14px;font-weight:700}
+.pdetails{display:none;padding:0 20px 20px;background:rgba(0,0,0,0.2);border-top:1px solid rgba(255,255,255,0.05)}
+.pcard.expanded .pdetails{display:block}
+.pdgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:12px}
+.pditem{background:rgba(255,255,255,0.03);border-radius:10px;padding:12px}
+.pditem .lbl{font-size:10px;color:#475569;text-transform:uppercase;margin-bottom:6px}
+.pditem .val{font-size:15px;font-weight:700}
+.pditem .sub{font-size:11px;color:#64748b;margin-top:2px}
+.pprog{margin-top:12px;background:rgba(255,255,255,0.03);border-radius:10px;padding:12px}
+.pprogl{font-size:10px;color:#475569;text-transform:uppercase;display:flex;justify-content:space-between;margin-bottom:8px}
+.pprogbar{height:8px;background:rgba(255,255,255,0.1);border-radius:4px;overflow:hidden}
+.pprogfill{height:100%;border-radius:4px;transition:width 0.5s ease-out}
+.pprogfill.pro{background:linear-gradient(90deg,#10b981,#34d399)}
+.pprogfill.neg{background:linear-gradient(90deg,#ef4444,#f87171)}
+
+/* Empty State */
+.e{text-align:center;padding:60px 20px}
+.ei{font-size:72px;margin-bottom:16px;opacity:0.3}
+.et{font-size:16px;color:#475569}
+
+/* AI Panel */
 .ai{padding:20px}
-.aih{font-size:14px;font-weight:700;margin-bottom:12px}
-.aih span{font-size:18px}
-.aic{font-size:13px;color:#94a3b8;line-height:1.8}
+.aih{font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.aih span{font-size:22px}
+.aic{font-size:13px;color:#94a3b8;line-height:2}
 .aic strong{color:#60a5fa}
 .aic .pro{color:#10b981}
 .aic .neg{color:#ef4444}
-.aim{margin-top:12px;padding:12px;background:rgba(59,130,246,0.1);border-radius:10px;border:1px solid rgba(59,130,246,0.2)}
+.aim{margin-top:14px;padding:14px;background:linear-gradient(135deg,rgba(59,130,246,0.15),rgba(139,92,246,0.1));border-radius:12px;border:1px solid rgba(59,130,246,0.2)}
 .aiml{font-size:11px;color:#64748b;margin-bottom:6px}
-.aimv{font-size:13px;font-weight:600;color:#60a5fa}
-.e{text-align:center;padding:40px;color:#475569}
-.ei{font-size:60px;margin-bottom:12px;opacity:0.3}
-.et{font-size:16px}
+.aimv{font-size:14px;font-weight:700;color:#60a5fa}
+
+/* Strategy Parameters Panel */
+.sp{margin-top:16px}
+.sph{font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.spc{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.spi{background:rgba(255,255,255,0.03);border-radius:10px;padding:10px 12px}
+.spi .l{font-size:10px;color:#475569;text-transform:uppercase;margin-bottom:4px}
+.spi .v{font-size:13px;font-weight:700;color:#60a5fa}
+.spi .v.pro{color:#10b981}
+.spi .v.neg{color:#ef4444}
+
+/* Footer */
 .f{text-align:center;color:#334155;font-size:11px;margin-top:16px}
-@keyframes upd{0%,100%{opacity:1}50%{opacity:0.6}}
+
+/* Animations */
+@keyframes upd{0%,100%{opacity:1}50%{opacity:0.5}}
 .upd{animation:upd 0.3s ease-in-out}
-@media(max-width:1200px){.mg{grid-template-columns:1fr}.g{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:768px){.g{grid-template-columns:repeat(2,1fr)}.h{flex-direction:column;gap:14px;text-align:center}}
+@keyframes flash{0%,100%{background:transparent}50%{background:rgba(59,130,246,0.2)}}
+.flash{animation:flash 0.5s ease-in-out}
+@keyframes slideIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.slideIn{animation:slideIn 0.3s ease-out}
+
+@media(max-width:1300px){.mg{grid-template-columns:1fr}.g{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:900px){.g{grid-template-columns:repeat(2,1fr)}.h{flex-direction:column;gap:14px;text-align:center}.pdgrid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.g{grid-template-columns:1fr 1fr}}
 </style>
 </head>
 <body>
 <div class="c">
+
+  <!-- Header -->
   <div class="h">
     <div class="hl">
-      <div class="logo">ROBOT</div>
+      <div class="logo">🤖</div>
       <div>
-        <div class="ti">OpenClaw Trading System</div>
-        <div class="sub">Binance Testnet | ITS v4.0 | 15 Pairs</div>
+        <div class="ti">ITS V4.1 智能量化交易系统</div>
+        <div class="sub">
+          <span>ITS v4.1</span>
+          <span>Binance Testnet</span>
+          <span>10 交易对</span>
+          <span>4x 杠杆</span>
+        </div>
       </div>
     </div>
     <div class="hr">
-      <div class="live"><div class="dot"></div> LIVE</div>
+      <div class="live"><div class="dot"></div> LIVE TRADING</div>
       <div class="clock" id="ck">--:--:--</div>
     </div>
   </div>
 
+  <!-- Strategy Parameters Bar -->
   <div class="sb">
-    <div class="si"><span class="sl">TP:</span><span class="sv">1.5%+2.5%</span></div>
-    <div class="si"><span class="sl">SL:</span><span class="sv">0.5%</span></div>
-    <div class="si"><span class="sl">Timeout:</span><span class="sv">30min</span></div>
-    <div class="si"><span class="sl">Pos:</span><span class="sv">30%</span></div>
-    <div class="si"><span class="sl">Max:</span><span class="sv">5</span></div>
-    <div class="si"><span class="sl">Lev:</span><span class="sv">3x</span></div>
-    <div class="si"><span class="sl">RSI:</span><span class="sv">30/70</span></div>
-    <div class="si"><span class="sl">Freq:</span><span class="sv">1min</span></div>
+    <div class="si"><span class="sl">止盈:</span><span class="sv pro">1.5%+2.5%</span></div>
+    <div class="si"><span class="sl">止损:</span><span class="sv neg">0.5%</span></div>
+    <div class="si"><span class="sl">ROI衰减:</span><span class="sv">启用</span></div>
+    <div class="si"><span class="sl">移动止损:</span><span class="sv">0.5%</span></div>
+    <div class="si"><span class="sl">仓位:</span><span class="sv">25%</span></div>
+    <div class="si lv"><span class="sl">最大持仓:</span><span class="sv">5</span></div>
+    <div class="si"><span class="sl">杠杆:</span><span class="sv">4x</span></div>
+    <div class="si"><span class="sl">盈亏比:</span><span class="sv pro">≥1.5</span></div>
+    <div class="si lv"><span class="sl">相关性过滤:</span><span class="sv">70%</span></div>
+    <div class="si"><span class="sl">BTC对冲:</span><span class="sv pro">ON</span></div>
   </div>
 
+  <!-- Refresh Bar -->
   <div class="rb"><div class="rf" id="rf"></div></div>
 
+  <!-- KPI Cards -->
   <div class="g">
-    <div class="k">
-      <div class="ic">$</div>
-      <div class="lb">Balance</div>
+    <div class="k" id="kb">
+      <div class="ic">💰</div>
+      <div class="lb">余额</div>
       <div class="v wt" id="bal">--</div>
-      <div class="mt">Init $5,000</div>
+      <div class="mt">初始 $5,000</div>
     </div>
     <div class="k" id="cw">
-      <div class="ic">W</div>
-      <div class="lb">Wallet</div>
+      <div class="ic">👛</div>
+      <div class="lb">钱包</div>
       <div class="v wt" id="wal">--</div>
       <div class="mt" id="walN">--</div>
     </div>
     <div class="k" id="cp">
-      <div class="ic">P</div>
-      <div class="lb">Pos PnL</div>
+      <div class="ic">📈</div>
+      <div class="lb">持仓盈亏</div>
       <div class="v" id="tpn">--</div>
       <div class="mt" id="apn">--</div>
     </div>
     <div class="k" id="ca">
-      <div class="ic">A</div>
-      <div class="lb">Acc PnL</div>
+      <div class="ic">💎</div>
+      <div class="lb">账户总盈亏</div>
       <div class="v" id="tpa">--</div>
       <div class="mt" id="apc">--</div>
     </div>
     <div class="k">
-      <div class="ic">T</div>
-      <div class="lb">Trades</div>
+      <div class="ic">🔄</div>
+      <div class="lb">交易次数</div>
       <div class="v bl" id="trades">--</div>
-      <div class="mt">Win: <span id="wins">--</span></div>
+      <div class="mt">胜率: <span id="wins">--</span></div>
     </div>
     <div class="k">
-      <div class="ic">R</div>
-      <div class="lb">Runtime</div>
+      <div class="ic">⏱</div>
+      <div class="lb">运行时长</div>
       <div class="v bl" id="rt">--</div>
       <div class="mt">Session</div>
     </div>
     <div class="k">
-      <div class="ic">#</div>
-      <div class="lb">Positions</div>
+      <div class="ic">📊</div>
+      <div class="lb">持仓数</div>
       <div class="v wt" id="pc">--</div>
-      <div class="mt">Min: 2</div>
+      <div class="mt">上限: 5</div>
     </div>
   </div>
 
+  <!-- Main Content -->
   <div class="mg">
+    <!-- Positions Panel -->
     <div class="se">
       <div class="sh">
-        <div class="st">Positions <span style="color:#64748b;font-weight:400;font-size:13px">(click to expand)</span></div>
+        <div class="st"><span>💹</span> 当前持仓 <span style="color:#64748b;font-weight:400;font-size:13px">(点击展开详情)</span></div>
         <div class="sc" id="scb">0</div>
       </div>
       <div class="pc">
-        <div class="pcg" id="pos">
-          <div class="e"><div class="ei">...</div><div class="et">No positions, scanning...</div></div>
+        <div class="pos-grid" id="pos">
+          <div class="e"><div class="ei">🔍</div><div class="et">正在扫描市场信号...</div></div>
         </div>
       </div>
     </div>
 
-    <div class="se">
-      <div class="ai">
-        <div class="aih">AI Analysis</div>
-        <div class="aic" id="aiC">Loading...</div>
-        <div class="aim">
-          <div class="aiml">Recommendation</div>
-          <div class="aimv" id="aiR">Scanning...</div>
+    <!-- Right Sidebar -->
+    <div>
+      <!-- AI Analysis -->
+      <div class="se" style="margin-bottom:16px">
+        <div class="ai">
+          <div class="aih"><span>🧠</span> AI 实时分析</div>
+          <div class="aic" id="aiC">正在加载市场数据...</div>
+          <div class="aim">
+            <div class="aiml">系统建议</div>
+            <div class="aimv" id="aiR">初始化中...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Strategy Parameters -->
+      <div class="se">
+        <div class="ai">
+          <div class="sph"><span>⚙️</span> 策略参数</div>
+          <div class="spc">
+            <div class="spi"><div class="l">止盈</div><div class="v pro">1.5% + 2.5%</div></div>
+            <div class="spi"><div class="l">止损</div><div class="v neg">0.5%</div></div>
+            <div class="spi"><div class="l">时间止损</div><div class="v">30 分钟</div></div>
+            <div class="spi"><div class="l">杠杆</div><div class="v">4x</div></div>
+            <div class="spi"><div class="l">仓位</div><div class="v">25%</div></div>
+            <div class="spi"><div class="l">最大持仓</div><div class="v">5 个</div></div>
+            <div class="spi"><div class="l">RSI</div><div class="v">30 / 70</div></div>
+            <div class="spi"><div class="l">盈亏比</div><div class="v pro">≥ 1.5</div></div>
+            <div class="spi"><div class="l">相关过滤</div><div class="v">70%</div></div>
+            <div class="spi"><div class="l">BTC对冲</div><div class="v pro">ON</div></div>
+            <div class="spi"><div class="l">保护机制</div><div class="v pro">启用</div></div>
+            <div class="spi"><div class="l">市场自适应</div><div class="v pro">启用</div></div>
+          </div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="f">OpenClaw v4.0 | Refresh 10s</div>
+  <div class="f">ITS V4.1 智能量化交易系统 | Auto-refresh 10s | © 2026</div>
 </div>
 
 <script>
@@ -201,7 +304,7 @@ function C(v) { return parseFloat(v || 0) >= 0 ? 'gn' : 'rd'; }
 
 function fmt() {
   var d = new Date();
-  return d.toLocaleTimeString('zh-CN', {hour12: false});
+  return d.toLocaleTimeString('zh-CN', {hour12: false, timeZone: 'Asia/Shanghai'});
 }
 
 function rt() {
@@ -214,47 +317,102 @@ function rt() {
 
 function toggle(sym) {
   exp[sym] = !exp[sym];
-  var el = document.getElementById('de_' + sym);
-  if (el) { el.className = exp[sym] ? 'pde ov' : 'pde'; }
+  var el = document.getElementById('card_' + sym);
+  if (el) {
+    if (exp[sym]) el.classList.add('expanded');
+    else el.classList.remove('expanded');
+  }
+}
+
+function calcDist(entry, mark, isLong) {
+  if (!entry || !mark) return {dist: '0', pct: '0'};
+  var dist = isLong ? (mark - entry) : (entry - mark);
+  var pct = (dist / entry * 100).toFixed(2);
+  return {dist: dist.toFixed(4), pct: pct};
 }
 
 function rPos(ps) {
   if (!ps || ps.length === 0) {
-    return '<div class="e"><div class="ei">...</div><div class="et">No positions, scanning...</div></div>';
+    return '<div class="e"><div class="ei">🔍</div><div class="et">暂无持仓，正在扫描市场信号...</div></div>';
   }
   var h = '';
   for (var i = 0; i < ps.length; i++) {
     var p = ps[i];
+    var isLong = p.isLong;
     var nc = C(p.pnl);
+    var pnlVal = parseFloat(p.pnl || 0);
+    var pnlPct = parseFloat(p.pnlPct || 0);
     var roe = Math.abs(parseFloat(p.roePct || 0));
-    var rw = Math.min(roe * 5, 100);
-    var lev = p.leverage || 3;
-    h += '<div class="pcard ' + (p.isLong ? 'ln' : 'sh') + '" onclick="toggle(\'' + p.symbol + '\')">';
-    h += '<div class="ph"><div class="psym">' + p.symbol.replace('USDT', '') + '</div>';
-    h += '<div class="pdir ' + (p.isLong ? 'ln' : 'sh') + '">' + (p.isLong ? 'LONG' : 'SHORT') + ' ' + lev + 'x</div></div>';
-    h += '<div class="pm"><div class="pmv ' + nc + '">' + S(p.pnl) + '$' + p.pnl + '</div>';
-    h += '<div class="pmp ' + nc + '">' + S(p.pnlPct) + p.pnlPct + '%</div></div>';
-    h += '<div class="pfg"><div><div class="pcl">Entry</div><div class="pcv">$' + p.entry + '</div></div>';
-    h += '<div><div class="pcl">Mark</div><div class="pcv">$' + p.mark + '</div></div>';
-    h += '<div><div class="pcl">Qty</div><div class="pcv">' + p.qty + '</div></div>';
-    h += '<div><div class="pcl">ROE</div><div class="pcv ' + nc + '">' + S(p.roePct) + p.roePct + '%</div></div></div>';
-    h += '<div class="pfo">Margin: <span>$' + p.margin + '</span></div>';
-    h += '<div class="pde" id="de_' + p.symbol + '">';
-    h += '<div class="pdr"><span class="pdl">Direction</span><span class="pdv">' + p.side + '</span></div>';
-    h += '<div class="pdr"><span class="pdl">Entry</span><span class="pdv">$' + p.entry + '</span></div>';
-    h += '<div class="pdr"><span class="pdl">Mark</span><span class="pdv">$' + p.mark + '</span></div>';
-    h += '<div class="pdr"><span class="pdl">Qty</span><span class="pdv">' + p.qty + '</span></div>';
-    h += '<div class="pdr"><span class="pdl">Leverage</span><span class="pdv">' + lev + 'x</span></div>';
-    h += '<div class="pdr"><span class="pdl">Margin</span><span class="pdv">$' + p.margin + '</span></div>';
-    h += '<div class="pdr"><span class="pdl">PnL</span><span class="pdv ' + nc + '">' + S(p.pnl) + '$' + p.pnl + ' (' + S(p.pnlPct) + p.pnlPct + '%)</span></div>';
-    h += '<div class="pdr"><span class="pdl">ROE</span><span class="pdv ' + nc + '">' + S(p.roePct) + p.roePct + '%</span></div>';
+    var lev = p.leverage || 4;
+    var margin = parseFloat(p.margin || 0);
+    var qty = p.qty || '0';
+    var entry = parseFloat(p.entry || 0);
+    var mark = parseFloat(p.mark || 0);
+    var dist = calcDist(entry, mark, isLong);
+    var toSL = entry * 0.005;
+    var toTP1 = entry * 0.015;
+    var toTP2 = entry * 0.025;
+
+    h += '<div class="pcard ' + (isLong ? 'ln' : 'sh') + ' slideIn" id="card_' + p.symbol + '" onclick="toggle(\'' + p.symbol + '\')">';
+    h += '<div class="phead">';
+    h += '<div class="psym">' + p.symbol.replace('USDT', '') + ' <span style="font-size:12px;color:#64748b;font-weight:400">' + (isLong ? '▲ LONG' : '▼ SHORT') + '</span></div>';
+    h += '<div class="pdir ' + (isLong ? 'ln' : 'sh') + '">' + lev + 'x ' + (isLong ? '多' : '空') + ' <span class="parrow">▼</span></div>';
+    h += '</div>';
+
+    h += '<div class="pmain">';
+    h += '<div class="pmleft">';
+    h += '<div class="pmstat">';
+    h += '<span><span class="lbl">入场: </span><span class="val">$' + p.entry + '</span></span>';
+    h += '<span><span class="lbl">标记: </span><span class="val ' + nc + '">$' + p.mark + '</span></span>';
     h += '</div></div>';
+
+    h += '<div class="pmcenter">';
+    h += '<div class="pmv ' + nc + '">' + S(p.pnl) + '$' + Math.abs(pnlVal).toFixed(2) + '</div>';
+    h += '<div class="pmp ' + nc + '">' + S(p.pnlPct) + p.pnlPct + '%</div>';
+    h += '</div>';
+
+    h += '<div class="pmright">';
+    h += '<div class="pmstat" style="text-align:right">';
+    h += '<span><span class="lbl">数量: </span><span class="val">' + qty + '</span></span>';
+    h += '<span><span class="lbl">ROE: </span><span class="val ' + nc + '">' + S(p.roePct) + roe.toFixed(2) + '%</span></span>';
+    h += '</div></div>';
+    h += '</div>';
+
+    h += '<div class="pmini">';
+    h += '<div class="pmb"><div class="lbl">保证金</div><div class="val">$' + margin.toFixed(2) + '</div></div>';
+    h += '<div class="pmb"><div class="lbl">浮动距离</div><div class="val ' + nc + '">' + S(dist.pct) + dist.pct + '%</div></div>';
+    h += '<div class="pmb"><div class="lbl">距止损</div><div class="val neg">$' + toSL.toFixed(2) + '</div></div>';
+    h += '</div>';
+
+    h += '<div class="pdetails">';
+    h += '<div class="pdgrid">';
+    h += '<div class="pditem"><div class="lbl">方向</div><div class="val ' + nc + '">' + (isLong ? '▲ 做多' : '▼ 做空') + '</div><div class="sub">杠杆 ' + lev + 'x</div></div>';
+    h += '<div class="pditem"><div class="lbl">入场价格</div><div class="val">$' + p.entry + '</div><div class="sub">成本 $' + (entry * qty).toFixed(2) + '</div></div>';
+    h += '<div class="pditem"><div class="lbl">标记价格</div><div class="val ' + nc + '">$' + p.mark + '</div><div class="sub">公允价格</div></div>';
+    h += '<div class="pditem"><div class="lbl">数量</div><div class="val">' + qty + '</div><div class="sub">名义价值 $' + (entry * qty).toFixed(2) + '</div></div>';
+    h += '<div class="pditem"><div class="lbl">保证金</div><div class="val">$' + margin.toFixed(2) + '</div><div class="sub">逐仓模式</div></div>';
+    h += '<div class="pditem"><div class="lbl">未实现盈亏</div><div class="val ' + nc + '">' + S(pnlVal) + '$' + pnlVal.toFixed(2) + '</div><div class="sub">' + S(pnlPct) + pnlPct + '%</div></div>';
+    h += '</div>';
+
+    var progPct = Math.min(Math.abs(pnlPct) * 20, 100);
+    h += '<div class="pprog">';
+    h += '<div class="pprogl"><span>止盈进度 (目标 2%)</span><span class="' + nc + '">' + pnlPct.toFixed(2) + '% / 2%</span></div>';
+    h += '<div class="pprogbar"><div class="pprogfill ' + (pnlVal >= 0 ? 'pro' : 'neg') + '" style="width:' + progPct + '%"></div></div>';
+    h += '</div>';
+
+    h += '<div class="pdgrid" style="margin-top:12px">';
+    h += '<div class="pditem"><div class="lbl">距止损 (0.5%)</div><div class="val neg">-$' + toSL.toFixed(2) + '</div><div class="sub">0.5% 止损</div></div>';
+    h += '<div class="pditem"><div class="lbl">TP1 (1.5%)</div><div class="val pro">+$' + toTP1.toFixed(2) + '</div><div class="sub">首批止盈</div></div>';
+    h += '<div class="pditem"><div class="lbl">TP2 (2.5%)</div><div class="val pro">+$' + toTP2.toFixed(2) + '</div><div class="sub">二批止盈</div></div>';
+    h += '</div></div>';
+
+    h += '</div>';
   }
   return h;
 }
 
 function genAI() {
-  if (!D) { return {rec: '... Initializing...', con: 'Loading market data...'}; }
+  if (!D) return {rec: '⏳ 系统初始化中...', con: '正在获取市场数据，请稍候...'};
   var bal = parseFloat(D.balance || 0);
   var pnl = parseFloat(D.totalPnl || 0);
   var accPnl = parseFloat(D.totalAccountPnl || 0);
@@ -267,42 +425,34 @@ function genAI() {
   var con = '';
 
   if (pc === 0) {
-    rec = '[SCAN] Waiting...';
-    con = '<strong>Status:</strong> <span class="pro">No positions</span><br>';
-    con += '<strong>Balance:</strong> $' + bal.toFixed(2) + '<br>';
-    con += '<strong>Today:</strong> ' + tc + ' trades (Win: ' + wr + '%)<br>';
-    con += '<strong>Action:</strong> Scanning 15 pairs<br>';
-    con += '<strong>Signals:</strong> MA+MACD+RSI+Volume';
-  } else if (pc < 2) {
-    rec = '[LOW] Add positions';
-    con = '<strong>Status:</strong> <span class="pro">Under-allocated</span><br>';
-    con += '<strong>Positions:</strong> ' + pc + '/5 (min 2)<br>';
-    con += '<strong>PnL:</strong> <span class="' + C(pnl) + '">' + S(pnl) + '$' + pnl.toFixed(2) + '</span><br>';
-    con += '<strong>Today:</strong> ' + tc + ' trades<br>';
-    con += '<strong>Action:</strong> Seek more setups';
-  } else if (pc < 5) {
-    rec = '[OK] Balanced: ' + pc + ' pos';
-    con = '<strong>Status:</strong> <span class="pro">Well positioned</span><br>';
-    con += '<strong>Positions:</strong> ' + pc + '/5<br>';
-    con += '<strong>PnL:</strong> <span class="' + C(pnl) + '">' + S(pnl) + '$' + pnl.toFixed(2) + '</span><br>';
-    con += '<strong>Account:</strong> <span class="' + C(accPnl) + '">' + S(accPnl) + '$' + accPnl.toFixed(2) + '</span><br>';
-    con += '<strong>Action:</strong> Hold and monitor';
-  } else {
-    rec = '[FULL] Max positions';
-    con = '<strong>Status:</strong> <span class="neg">Full allocation</span><br>';
-    con += '<strong>Positions:</strong> ' + pc + '/5<br>';
-    con += '<strong>PnL:</strong> <span class="' + C(pnl) + '">' + S(pnl) + '$' + pnl.toFixed(2) + '</span><br>';
-    con += '<strong>Action:</strong> Close before new';
+    rec = '🟡 扫描中 - 等待信号';
+    con = '<strong>状态:</strong> <span style="color:#64748b">无持仓</span><br>';
+    con += '<strong>账户余额:</strong> $' + bal.toFixed(2) + '<br>';
+    con += '<strong>历史交易:</strong> ' + tc + ' 笔 | 胜率 ' + wr + '%<br>';
+    con += '<strong>扫描对:</strong> BTC ETH BNB SOL ADA AVAX<br>';
+    con += '<strong>+ MATIC DOGE DOT XRP</strong>';
+  } else if (pc >= 1 && pc <= 3) {
+    rec = '🟢 持仓中 - 监控信号';
+    con = '<strong>状态:</strong> <span class="pro">正常持仓 (' + pc + '/5)</span><br>';
+    con += '<strong>持仓盈亏:</strong> <span class="' + C(pnl) + '">' + S(pnl) + '$' + pnl.toFixed(2) + '</span><br>';
+    con += '<strong>账户总盈亏:</strong> <span class="' + C(accPnl) + '">' + S(accPnl) + '$' + accPnl.toFixed(2) + ' (' + S(D.totalAccountPnlPct) + D.totalAccountPnlPct + '%)</span><br>';
+    con += '<strong>历史交易:</strong> ' + tc + ' 笔 | 胜率 ' + wr + '%';
+  } else if (pc >= 4) {
+    rec = '🟠 满仓 - 注意风险';
+    con = '<strong>状态:</strong> <span class="neg">高仓位 (' + pc + '/5)</span><br>';
+    con += '<strong>持仓盈亏:</strong> <span class="' + C(pnl) + '">' + S(pnl) + '$' + pnl.toFixed(2) + '</span><br>';
+    con += '<strong>建议:</strong> <span class="neg">等待止盈信号，考虑减仓</span><br>';
+    con += '<strong>历史交易:</strong> ' + tc + ' 笔 | 胜率 ' + wr + '%';
   }
 
   if (ps.length > 0) {
     var best = ps[0], worst = ps[0];
     for (var j = 1; j < ps.length; j++) {
-      if (parseFloat(ps[j].pnl) > parseFloat(best.pnl)) { best = ps[j]; }
-      if (parseFloat(ps[j].pnl) < parseFloat(worst.pnl)) { worst = ps[j]; }
+      if (parseFloat(ps[j].pnl) > parseFloat(best.pnl)) best = ps[j];
+      if (parseFloat(ps[j].pnl) < parseFloat(worst.pnl)) worst = ps[j];
     }
-    con += '<br><strong>Best:</strong> ' + best.symbol + ' <span class="pro">' + S(best.pnl) + '$' + best.pnl + '</span>';
-    con += '<br><strong>Worst:</strong> ' + worst.symbol + ' <span class="neg">' + S(worst.pnl) + '$' + worst.pnl + '</span>';
+    con += '<br><br><strong>最佳持仓:</strong> ' + best.symbol + ' <span class="pro">' + S(best.pnl) + '$' + best.pnl + '</span>';
+    con += '<br><strong>最差持仓:</strong> ' + worst.symbol + ' <span class="' + C(worst.pnl) + '">' + S(worst.pnl) + '$' + worst.pnl + '</span>';
   }
   return {rec: rec, con: con};
 }
@@ -318,7 +468,7 @@ async function load() {
     D = await r.json();
     if (D.error) { console.error(D.error); return; }
 
-    ['bal', 'wal', 'tpn', 'tpa', 'trades', 'wins', 'pc'].forEach(flash);
+    ['bal','wal','tpn','tpa','trades','wins','pc'].forEach(flash);
 
     var tp = parseFloat(D.totalPnl || 0);
     var ta = parseFloat(D.totalAccountPnl || 0);
@@ -343,11 +493,14 @@ async function load() {
     document.getElementById('ca').className = 'k ' + (ta >= 0 ? 'gn' : 'rd');
 
     document.getElementById('trades').textContent = D.tradeCount || 0;
-    document.getElementById('wins').textContent = D.winCount || 0;
+    var wr = (D.tradeCount > 0) ? ((D.winCount / D.tradeCount) * 100).toFixed(0) + '%' : '--';
+    document.getElementById('wins').textContent = wr;
     document.getElementById('pc').textContent = D.posCount + '/5';
-    document.getElementById('scb').textContent = D.posCount;
 
-    exp = {};
+    var scbEl = document.getElementById('scb');
+    scbEl.textContent = D.posCount;
+    scbEl.className = 'sc' + (D.posCount >= 4 ? ' full' : D.posCount > 0 ? ' active' : '');
+
     var posArray = Array.isArray(D.positions) ? D.positions : [];
     document.getElementById('pos').innerHTML = rPos(posArray);
 

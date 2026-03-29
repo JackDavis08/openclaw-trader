@@ -1,78 +1,34 @@
 # openclaw-trader 实盘配置
-# ⚠️  修改前请确认你已经在模拟盘验证策略有稳定正收益
-# ⚠️  将 strategy.yaml 的 mode 改为 "auto" 才会生效
+# 使用多账户模式分别配置现货和期货测试网
 
-# ───────────────────────────────────────
-# 交易所
-# ───────────────────────────────────────
-exchange:
-  name: "binance"
-  credentials_path: ".secrets/binance.json"
+accounts:
+  # 现货测试网账户
+  - id: binance-spot-testnet
+    provider: binance
+    credentials_path: .secrets/binance-testnet.json
+    testnet: true
+    scenarios:
+      - conservative-spot
+      - aggressive-spot
+    risk:
+      position_ratio: 0.4
+      max_positions: 2
+      stop_loss_percent: 5
+      take_profit_percent: 10
 
-  # 建议从现货开始，验证后再考虑合约
-  market: "spot"              # spot | margin | futures
-
-  futures:
-    contract_type: "perpetual"
-    margin_mode: "isolated"   # 强烈建议 isolated（逐仓）
-
-  leverage:
-    enabled: false            # 实盘初期不建议开杠杆
-    default: 1
-    max: 2                    # 即使开启，最多 2x
-
-# ───────────────────────────────────────
-# 币种（可与模拟盘不同）
-# 建议实盘先缩减到 3-5 个流动性最好的
-# ───────────────────────────────────────
-symbols:
-  - BTCUSDT
-  - ETHUSDT
-  - BNBUSDT
-
-# ───────────────────────────────────────
-# 风险参数覆盖（不填则继承 strategy.yaml）
-# 实盘风控通常应比模拟盘更严
-# ───────────────────────────────────────
-risk:
-  stop_loss_percent: 4
-  take_profit_percent: 12
-  trailing_stop:
-    enabled: true
-    activation_percent: 6
-    callback_percent: 2
-  position_ratio: 0.15        # 实盘仓位更保守
-  max_positions: 3
-  max_position_per_symbol: 0.25
-  max_total_loss_percent: 15
-  daily_loss_limit_percent: 5
-
-# ───────────────────────────────────────
-# v0.6 Multi-Account Mode (optional)
-# ───────────────────────────────────────
-# Uncomment to enable multi-account mode.
-# Each account references scenario IDs from paper.yaml.
-# The scenario defines strategy, symbols, risk, market type.
-# The account provides credentials + testnet flag.
-#
-# When `accounts` is present, live-monitor uses multi-account mode;
-# otherwise it falls back to testnet-from-paper.yaml behavior.
-#
-# accounts:
-#   - id: binance-main
-#     provider: binance
-#     credentials_path: .secrets/binance-main.json
-#     scenarios: [conservative-spot, trend-spot]
-#
-#   - id: binance-futures
-#     provider: binance
-#     credentials_path: .secrets/binance-futures.json
-#     scenarios: [aggressive-futures-3x]
-#
-#   - id: binance-testnet
-#     provider: binance
-#     credentials_path: .secrets/binance-testnet.json
-#     testnet: true
-#     scenarios: [testnet-default]
-#     risk:                          # optional per-account risk override
-#       position_ratio: 0.08
+  # 期货测试网账户 - ITS v4.0
+  - id: binance-futures-testnet
+    provider: binance
+    credentials_path: .secrets/binance-futures-testnet.json
+    testnet: true
+    scenarios:
+      - futures-long-short    # ITS v4.0 双向策略
+    risk:
+      position_ratio: 0.20
+      max_positions: 3
+      stop_loss_percent: 0.5
+      take_profit_percent: 2
+      trailing_stop:
+        enabled: true
+        activation_percent: 0.5
+        callback_percent: 0.5

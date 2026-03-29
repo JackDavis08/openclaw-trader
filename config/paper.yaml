@@ -1,52 +1,34 @@
-# openclaw-trader 模拟盘配置
-# 场景 = 策略(strategy_id) × 市场(exchange)
-# 每个场景独立账户：logs/paper-{id}.json
-# 对比报告：npm run paper:compare
-
 report_interval_hours: 24
-
 scenarios:
-
-  # ══════════════════════════════════════════
-  # 保守策略组
-  # ══════════════════════════════════════════
-
-  - id: "conservative-spot"
-    name: "保守 × 现货"
-    enabled: true               # 2026-03-09 开启积累数据
-    strategy_id: "conservative"
-    # F4 Strategy Plugin 示例（在策略 YAML 中设置，不在 scenario 级别设置）：
-    # 在 config/strategies/conservative.yaml 中添加：
-    #   strategy_id: "rsi-reversal"    # 使用 RSI 均值回归插件策略
-    # 或:
-    #   strategy_id: "breakout"        # 使用趋势突破插件策略
+  - id: conservative-spot
+    name: 保守 × 现货
+    enabled: true
+    strategy_id: conservative
     initial_usdt: 10000
     fee_rate: 0.001
     slippage_percent: 0.05
     exchange:
-      market: "spot"
+      market: spot
       leverage:
         enabled: false
         default: 1
         max: 1
-
-  - id: "conservative-futures-3x"
-    name: "保守 × 合约 3x"
-    enabled: true               # 2026-03-09 开启积累数据
-    strategy_id: "conservative"
+  - id: conservative-futures-3x
+    name: 保守 × 合约 3x
+    enabled: false
+    strategy_id: conservative
     initial_usdt: 10000
     fee_rate: 0.0004
     slippage_percent: 0.08
     exchange:
-      market: "futures"
+      market: futures
       futures:
-        contract_type: "perpetual"
-        margin_mode: "isolated"
+        contract_type: perpetual
+        margin_mode: isolated
       leverage:
         enabled: true
         default: 3
         max: 3
-    # 合约下进一步收紧保守策略的风控
     risk:
       stop_loss_percent: 3
       take_profit_percent: 9
@@ -59,37 +41,31 @@ scenarios:
       max_position_per_symbol: 0.2
       max_total_loss_percent: 12
       daily_loss_limit_percent: 4
-
-  # ══════════════════════════════════════════
-  # 激进策略组
-  # ══════════════════════════════════════════
-
-  - id: "aggressive-spot"
-    name: "激进 × 现货"
-    enabled: true
-    strategy_id: "aggressive"
+  - id: aggressive-spot
+    name: 激进 × 现货
+    enabled: false
+    strategy_id: aggressive
     initial_usdt: 10000
     fee_rate: 0.001
     slippage_percent: 0.05
     exchange:
-      market: "spot"
+      market: spot
       leverage:
         enabled: false
         default: 1
         max: 1
-
-  - id: "aggressive-futures-3x"
-    name: "激进 × 合约 3x"
-    enabled: true               # 2026-03-09 开启积累数据
-    strategy_id: "aggressive"
+  - id: aggressive-futures-3x
+    name: 激进 × 合约 3x
+    enabled: false
+    strategy_id: aggressive
     initial_usdt: 10000
     fee_rate: 0.0004
     slippage_percent: 0.1
     exchange:
-      market: "futures"
+      market: futures
       futures:
-        contract_type: "perpetual"
-        margin_mode: "isolated"
+        contract_type: perpetual
+        margin_mode: isolated
       leverage:
         enabled: true
         default: 3
@@ -106,37 +82,31 @@ scenarios:
       max_position_per_symbol: 0.3
       max_total_loss_percent: 20
       daily_loss_limit_percent: 8
-
-  # ══════════════════════════════════════════
-  # 趋势跟踪策略组
-  # ══════════════════════════════════════════
-
-  - id: "trend-spot"
-    name: "趋势 × 现货"
-    enabled: true               # 2026-03-09 开启积累数据
-    strategy_id: "trend"
+  - id: trend-spot
+    name: 趋势 × 现货
+    enabled: false
+    strategy_id: trend
     initial_usdt: 10000
     fee_rate: 0.001
     slippage_percent: 0.05
     exchange:
-      market: "spot"
+      market: spot
       leverage:
         enabled: false
         default: 1
         max: 1
-
-  - id: "trend-futures-5x"
-    name: "趋势 × 合约 5x"
-    enabled: true               # 2026-03-09 开启积累数据
-    strategy_id: "trend"
+  - id: trend-futures-5x
+    name: 趋势 × 合约 5x
+    enabled: true
+    strategy_id: trend
     initial_usdt: 10000
     fee_rate: 0.0004
     slippage_percent: 0.12
     exchange:
-      market: "futures"
+      market: futures
       futures:
-        contract_type: "perpetual"
-        margin_mode: "isolated"
+        contract_type: perpetual
+        margin_mode: isolated
       leverage:
         enabled: true
         default: 5
@@ -153,34 +123,28 @@ scenarios:
       max_position_per_symbol: 0.15
       max_total_loss_percent: 8
       daily_loss_limit_percent: 3
-
-  # ══════════════════════════════════════════
-  # RSI 均值回归策略组
-  # ══════════════════════════════════════════
-
-  - id: "rsi-spot"
-    name: "RSI均值回归 × 现货"
+  - id: rsi-spot
+    name: RSI均值回归 × 现货
     enabled: true
-    strategy_id: "rsi-pure"
+    strategy_id: rsi-pure
     initial_usdt: 10000
     fee_rate: 0.001
     slippage_percent: 0.05
     exchange:
-      market: "spot"
+      market: spot
       leverage:
         enabled: false
         default: 1
         max: 1
-
-  - id: "rsi-margin-2x"
-    name: "RSI均值回归 × 杠杆2x"
-    enabled: true               # 2026-03-09 开启积累数据
-    strategy_id: "rsi-pure"
+  - id: rsi-margin-2x
+    name: RSI均值回归 × 杠杆2x
+    enabled: true
+    strategy_id: rsi-pure
     initial_usdt: 10000
     fee_rate: 0.001
     slippage_percent: 0.06
     exchange:
-      market: "margin"
+      market: margin
       leverage:
         enabled: true
         default: 2
@@ -197,24 +161,17 @@ scenarios:
       max_position_per_symbol: 0.25
       max_total_loss_percent: 18
       daily_loss_limit_percent: 6
-
-  # ══════════════════════════════════════════
-  # Binance Testnet（真实 API，虚拟资金）
-  # 申请地址：https://testnet.binance.vision
-  # 凭证文件：.secrets/binance-testnet.json
-  # ══════════════════════════════════════════
-
-  - id: "testnet-default"
-    name: "Testnet × 阶段一数据积累"
+  - id: testnet-default
+    name: Testnet × 阶段一数据积累
     enabled: true
-    strategy_id: "data-accumulation"
-    initial_usdt: 8202          # 同步自 state.initialUsdt（2026-03-11 修正）
+    strategy_id: data-accumulation
+    initial_usdt: 8202
     fee_rate: 0.001
     slippage_percent: 0.05
     exchange:
-      market: "spot"
+      market: spot
       testnet: true
-      credentials_path: ".secrets/binance-testnet.json"
+      credentials_path: .secrets/binance-testnet.json
       leverage:
         enabled: false
         default: 1
@@ -227,9 +184,9 @@ scenarios:
         activation_percent: 5
         callback_percent: 1.5
       position_ratio: 0.1
-      max_positions: 0              # 0 = 不限制持仓数
+      max_positions: 0
       max_position_per_symbol: 0.15
-      max_total_loss_percent: 80   # testnet 虚拟资金，高阈值避免频繁熔断
+      max_total_loss_percent: 80
       daily_loss_limit_percent: 20
       atr_position:
         enabled: true
@@ -237,19 +194,17 @@ scenarios:
         atr_multiplier: 1.5
         max_position_ratio: 0.15
       time_stop_hours: 48
-
-  # ─── Futures Testnet 空头场景 ────────────────────────────────
   - id: futures-short-test
-    name: "Futures Testnet 空头测试"
-    enabled: false              # 与 futures-long-short 共用同一 testnet 账户，保证金冲突，暂停
-    strategy_id: "short-trend"   # config/strategies/short-trend.yaml
+    name: Futures Testnet 空头测试
+    enabled: false
+    strategy_id: short-trend
     initial_usdt: 5000
-    fee_rate: 0.0004             # Futures maker fee 0.02%, taker 0.04%
+    fee_rate: 0.0004
     slippage_percent: 0.03
     exchange:
       market: futures
       testnet: true
-      credentials_path: ".secrets/binance-futures-testnet.json"
+      credentials_path: .secrets/binance-futures-testnet.json
     symbols:
       - BTCUSDT
       - ETHUSDT
@@ -265,73 +220,86 @@ scenarios:
       position_ratio: 0.2
       max_positions: 3
       max_position_per_symbol: 0.3
-
-  # ─── Futures Testnet 双向场景 ────────────────────────────────
   - id: futures-long-short
-    name: "Futures Testnet 双向测试"
-    enabled: true                # ✅ 2026-03-05 重新启用：futures testnet API key 已修复
-    strategy_id: "long-short"   # config/strategies/long-short.yaml
-    initial_usdt: 3753          # 同步自 state.initialUsdt（2026-03-11 修正，原为 ghost 持仓清理后重置值）
+    name: Futures Testnet ITS v4.0
+    enabled: true
+    strategy_id: long-short
+    initial_usdt: 5000
     fee_rate: 0.0004
     slippage_percent: 0.03
     exchange:
       market: futures
       testnet: true
-      credentials_path: ".secrets/binance-futures-testnet.json"
+      credentials_path: .secrets/binance-futures-testnet.json
     risk:
-      stop_loss_percent: 5
-      take_profit_percent: 15
+      stop_loss_percent: 0.5
+      take_profit_percent: 2
+      take_profit_1: 1.5
+      take_profit_2: 2.5
+      min_rr: 1.5
+      minimal_roi:
+        '0': 0.03
+        '30': 0.02
+        '60': 0.015
+        '120': 0.005
       trailing_stop:
         enabled: true
-        activation_percent: 7
-        callback_percent: 2.5
-      position_ratio: 0.18
-      max_positions: 4
-      max_position_per_symbol: 0.25
+        activation_percent: 0.5
+        callback_percent: 0.5
+      trailing_stop_positive: 0.01
+      trailing_stop_positive_offset: 0.02
+      trailing_only_offset_is_reached: true
+      position_ratio: 0.25
+      max_positions: 5
+      min_positions: 2
+      max_position_per_symbol: 0.3
       max_total_loss_percent: 20
       daily_loss_limit_percent: 8
-      atr_position:
+      correlation_filter:
         enabled: true
-        risk_per_trade_percent: 2
-        atr_multiplier: 1.5
-        max_position_ratio: 0.25
+        threshold: 0.7
+        lookback: 60
+      btc_hedge:
+        enabled: true
+        btc_strong_up_trigger: true
     symbols:
       - BTCUSDT
       - ETHUSDT
-      - SOLUSDT
       - BNBUSDT
-
-  # ══════════════════════════════════════════
-  # DCA 分批建仓场景（极度恐惧时逐步抄底）
-  # 启用方法：enabled: true
-  # ══════════════════════════════════════════
-  - id: "dca-spot"
-    name: "DCA 分批建仓 × 现货"
-    enabled: true               # 2026-03-09 开启积累数据（当前 FGI=8 极度恐惧，适合 DCA）
-    strategy_id: "conservative" # 用保守策略的信号触发入场
+      - SOLUSDT
+      - ADAUSDT
+      - AVAXUSDT
+      - MATICUSDT
+      - DOGEUSDT
+      - DOTUSDT
+      - XRPUSDT
+  - id: dca-spot
+    name: DCA 分批建仓 × 现货
+    enabled: true
+    strategy_id: conservative
     initial_usdt: 10000
     fee_rate: 0.001
     slippage_percent: 0.05
     exchange:
-      market: "spot"
+      market: spot
       leverage:
         enabled: false
         default: 1
         max: 1
     risk:
-      stop_loss_percent: 8       # DCA 场景止损更宽（留空间补仓）
-      take_profit_percent: 20    # 等待更大反弹再止盈
+      stop_loss_percent: 8
+      take_profit_percent: 20
       trailing_stop:
         enabled: true
         activation_percent: 8
         callback_percent: 3
-      position_ratio: 0.08       # 每批 8%，3 批 = 总仓位 24%
+      position_ratio: 0.08
       max_positions: 3
       max_position_per_symbol: 0.3
       max_total_loss_percent: 15
       daily_loss_limit_percent: 5
       dca:
         enabled: true
-        tranches: 3              # 分 3 批建仓
-        drop_pct: 3.0            # 跌 3% 追加下一批
-        max_hours: 48            # 最多 DCA 持续 48h，超时停止追加
+        tranches: 3
+        drop_pct: 3
+        max_hours: 48

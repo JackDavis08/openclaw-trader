@@ -1,6 +1,6 @@
 {
   "name": "openclaw-trader",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Automated crypto trading bot powered by OpenClaw AI",
   "type": "module",
   "scripts": {

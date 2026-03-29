@@ -1,0 +1,65 @@
+# 激进套利策略 v1.0 - 高频快进快出
+# 核心理念：薄利多销、严格止损、快速复利
+# 适合：小资金、高频套利、震荡行情
+
+name: "激进套利 v1.0"
+description: "RSI+MACD+成交量三重确认，15m超短期信号，TP1.5%+SL0.5%+4x杠杆，捕捉日内多次机会"
+
+timeframe: "15m"
+trend_timeframe: "1h"        # 1h确认趋势方向，避免逆势
+
+strategy:
+  ma:
+    short: 10                # 超短周期均线，快速反应
+    long: 30                # 30周期均线确认趋势
+  rsi:
+    period: 14
+    oversold: 30            # RSI<30 超卖，抄底做多
+    overbought: 70          # RSI>70 超买，反转做空
+  macd:
+    enabled: true
+    fast: 12                # MACD快速线
+    slow: 26                # MACD慢速线
+    signal: 9               # MACD信号线
+  volume:
+    surge_ratio: 1.5        # 成交量放大1.5倍确认突破
+    low_ratio: 0.5          # 缩量不参与
+
+# ── 入场信号 ──────────────────────────────────
+# 做多：RSI超卖 + MACD金叉 + 成交量确认
+# 做空：RSI超买/高档区 + MACD死叉 + 成交量确认
+# ─────────────────────────────────────────────
+signals:
+  buy:
+    - rsi_oversold           # RSI < 30 超卖，价格反弹概率高
+    - macd_golden_cross      # MACD金叉，动能由空转多
+    - volume_surge           # 成交量放大1.5倍确认
+
+  sell:
+    - rsi_overbought         # RSI > 70 超买，反弹目标达到
+    - macd_death_cross       # MACD死叉，动能由多转空
+    - rsi_overbought_exit    # RSI 动态阈值，激进离场
+
+  short:
+    - rsi_bullish_zone       # RSI 40-70 区间，强势区域可做空
+    - macd_death_cross       # MACD死叉确认做空
+    - volume_surge           # 成交量放大确认
+
+  cover:
+    - rsi_oversold           # RSI超卖，趋势可能反转，平空
+    - macd_golden_cross      # MACD金叉，平空
+
+# ── 风控参数 ──────────────────────────────────
+risk:
+  stop_loss_percent: 0.5    # 止损0.5%，严格截断亏损
+  take_profit_percent: 1.5   # 止盈1.5%，快速落袋不贪
+  trailing_stop:
+    enabled: true
+    activation_percent: 0.8  # 浮盈0.8%后激活移动止损
+    callback_percent: 0.3    # 回调0.3%自动止盈
+  time_stop_hours: 1        # 持仓1小时未盈利，强制平仓（时间止损）
+  position_ratio: 0.20       # 单笔仓位20%（4x杠杆 = 80%仓位）
+  max_positions: 3           # 最多同时持有3个仓位
+  max_position_per_symbol: 0.3  # 单币种不超过30%仓位
+  max_total_loss_percent: 5  # 全账户回撤5%停止交易
+  daily_loss_limit_percent: 3 # 单日亏损3%停止交易

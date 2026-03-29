@@ -15,6 +15,10 @@
 
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
+
+// Helper: get script directory reliably on Windows (tsx compatibility)
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 import { getKlines } from "../exchange/binance.js";
 import { checkMtfFilter } from "../strategy/mtf-filter.js";
 import { loadRecentTrades } from "../strategy/recent-trades.js";
@@ -62,7 +66,7 @@ const BTC_CRASH_THRESHOLD_PCT = 8;  // BTC 1-hour drop trigger threshold (defaul
 const MAX_BTC_PRICE_BUFFER = 60;    // Keep last 60 price points (~1 hour, 1 per minute)
 const PAIRLIST_MAX_AGE_MS = 25 * 60 * 60 * 1000; // pairlist file older than 25h considered stale
 const PAIRLIST_PATH = path.resolve(
-  path.dirname(new URL(import.meta.url).pathname),
+  SCRIPT_DIR,
   "../../logs/current-pairlist.json"
 );
 
@@ -165,7 +169,7 @@ function clearFilteredCooldown(symbol: string): void {
 
 // ── P6.2 On-chain stablecoin flow cache (refresh hourly, write to file for monitor.ts to read) ──
 const ONCHAIN_CACHE_PATH = path.resolve(
-  path.dirname(new URL(import.meta.url).pathname),
+  SCRIPT_DIR,
   "../../logs/onchain-cache.json"
 );
 const STABLECOIN_REFRESH_MS = 60 * 60 * 1000; // Refresh every 60 minutes
@@ -407,7 +411,7 @@ async function processSymbol(
     if (cfg.risk.position_sizing === "kelly") {
       try {
         const histPath = path.resolve(
-          path.dirname(new URL(import.meta.url).pathname),
+          SCRIPT_DIR,
           "../../logs/signal-history.jsonl"
         );
         if (fs.existsSync(histPath)) {
@@ -727,7 +731,7 @@ async function main(): Promise<void> {
   log.info(`📋 Unified signal engine: processSignal() + MTF + sentiment gate + Kelly + event calendar + correlation filter`);
 
   // ── State file consistency check ─────────────────────────────────────
-  const logsDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../logs");
+  const logsDir = path.resolve(SCRIPT_DIR, "../../logs");
   for (const cfg of runtimes) {
     const stateFile = path.join(logsDir, `paper-${cfg.paper.scenarioId}.json`);
     const configInitial = cfg.paper.initial_usdt;
@@ -748,14 +752,10 @@ async function main(): Promise<void> {
   }
 
   // ── Real CVD — aggTrade WebSocket ────────────────────
-  const cvdSymbols = runtimes.length > 0
-    ? [...new Set(runtimes.flatMap((r) => r.symbols))]
-    : [];
-  const cvdManager = cvdSymbols.length > 0 ? new CvdManager(cvdSymbols, { windowMs: 3_600_000 }) : null;
-  if (cvdManager) {
-    cvdManager.start();
-    log.info(`📊 Real CVD started, monitoring ${cvdSymbols.length} symbols`);
-  }
+  // TEMPORARILY DISABLED FOR TESTING — CVD causes crashes
+  // TODO: re-enable once CVD WebSocket stability is confirmed
+  const cvdManager = null;
+  log.info(`📊 Real CVD disabled for testing`);
 
   // Test connection — group by credentials_path to ping once per account
   const pingedCredentials = new Set<string>();
@@ -979,7 +979,7 @@ async function main(): Promise<void> {
           if (cfg.rebalance?.enabled) {
             try {
               const rebalanceStatePath = path.resolve(
-                path.dirname(new URL(import.meta.url).pathname),
+                SCRIPT_DIR,
                 `../../logs/rebalance-state-${cfg.paper.scenarioId}.json`,
               );
               let lastRebalanceAt = 0;

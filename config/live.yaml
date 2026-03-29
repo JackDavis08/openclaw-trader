@@ -23,6 +23,7 @@ accounts:
     testnet: true
     scenarios:
       - futures-long-short    # ITS v4.0 双向策略
+      - aggressive-scalp      # 激进套利策略
     risk:
       position_ratio: 0.20
       max_positions: 3

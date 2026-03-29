@@ -13,7 +13,9 @@ const LOGS_DIR = path.resolve(__dirname, "../../logs");
 
 /** Returns account state file path based on scenario ID */
 export function getAccountPath(scenarioId = "default"): string {
-  return path.join(LOGS_DIR, `paper-${scenarioId}.json`);
+  // Replace colons with dashes for Windows compatibility (composite IDs like "account:scenario")
+  const safeId = scenarioId.replace(/:/g, "-");
+  return path.join(LOGS_DIR, `paper-${safeId}.json`);
 }
 
 export interface PaperPosition {

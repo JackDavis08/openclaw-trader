@@ -1,9 +1,9 @@
-# 双向策略 ITS v4.0：牛市做多 + 熊市做空
+# 双向策略 ITS v4.5：牛市做多 + 熊市做空
 # 市场类型：futures / margin（spot 只有多头生效）
 # 适合：适应性强，无论涨跌均可捕捉趋势
-# 更新：2026-03-29 整合 GitHub 最新功能
-name: "双向趋势策略 ITS v4.0"
-description: "MA 趋势多空两用 + 6重信号确认 + 市场自适应参数"
+# 更新：2026-03-29 整合 zeneo-ai/crypto-trader 所有信号条件
+name: "双向趋势策略 ITS v4.5"
+description: "MA+RSI+VWAP+CVD+资金费率+多空比 10重信号确认 + 市场自适应参数"
 
 timeframe: "1h"
 trend_timeframe: "4h"
@@ -16,33 +16,57 @@ strategy:
     period: 14
     oversold: 30          # 超卖区域（做多信号用）
     overbought: 70        # 超买区域（做空信号用）
+    overbought_exit: 75   # RSI超过此值考虑止盈（zeneo-ai标准）
   macd:
     enabled: true         # 保留计算（用于日志/指标），但不做入场条件
     fast: 12
     slow: 26
     signal: 9
   volume:
-    surge_ratio: 0        # 成交量确认已关闭
-    low_ratio: 0
+    surge_ratio: 1.5     # 成交量放大1.5倍确认趋势
+    low_ratio: 0.5         # 成交量萎缩50%以下不做空
+
+  # ── 资金费率过滤（V4.5新增）────────────────────
+  # 极端资金费率作为反向信号
+  funding_rate:
+    long_threshold: 0.30    # 做多费率上限（超过此值不做多）
+    short_threshold: 0.15   # 做空费率下限（低于此值不做空）
+
+  # ── 多空比过滤（V4.5新增）────────────────────
+  long_short_ratio:
+    extreme_long_threshold: 3.0    # 做多极度拥挤（>3.0反向做空）
+    extreme_short_threshold: 0.5   # 做空极度拥挤（<0.5反向做多）
+    long_biased_threshold: 1.8     # 做多偏重
+    short_biased_threshold: 0.8    # 做空偏重
 
 # ─────────────────────────────────────────────────
-# 入场信号（核心2重确认）
-# 多头：MA多头 + RSI 未超买
-# 平多：均线空头
-# 开空：均线空头 + RSI 未超卖
-# 平空：均线多头
+# 入场信号（ITS V4.5 增强版：多条件确认）
+# 多头：MA多头 + RSI 未超买 + VWAP确认 + CVD确认
+# 平多：均线空头 或 RSI 超买
+# 开空：均线空头 + RSI 未超卖 + VWAP确认
+# 平空：均线多头 或 RSI 超卖
 # ─────────────────────────────────────────────────
 signals:
   buy:
-    - ma_bullish           # EMA20 > EMA60（4h 趋势向上）
-    - rsi_not_overbought   # RSI < 70（未超买）
+    - ma_bullish             # EMA20 > EMA60（4h 趋势向上）
+    - rsi_not_overbought     # RSI < 70（未超买）
+    # 增强条件（V4.5新增）：
+    - price_above_vwap       # 价格在VWAP上方（机构看多）
+    - cvd_bullish            # CVD正值（买入压力）
   sell:
-    - ma_bearish           # 趋势反转，平多
+    - ma_bearish             # 趋势反转，平多
+    - rsi_overbought         # RSI > 70 超买，平多
+    - price_above_vwap_upper2  # 价格超过VWAP+2σ，止盈
   short:
-    - ma_bearish           # EMA20 < EMA60（4h 趋势向下）
-    - rsi_not_oversold     # RSI > 30（未超卖，避免底部追空）
+    - ma_bearish             # EMA20 < EMA60（4h 趋势向下）
+    - rsi_not_oversold       # RSI > 30（未超卖，避免底部追空）
+    # 增强条件（V4.5新增）：
+    - price_below_vwap       # 价格在VWAP下方（机构看空）
+    - cvd_bearish            # CVD负值（卖出压力）
   cover:
-    - ma_bullish           # 趋势反转，平空
+    - ma_bullish             # 趋势反转，平空
+    - rsi_oversold           # RSI < 30 超卖，平空
+    - price_below_vwap_lower2   # 价格跌破VWAP-2σ，超卖信号
 
 risk:
   # ── 止盈止损（核心参数）─────────────────────────

@@ -23,7 +23,7 @@ const SIGNAL_CHECKERS: Record<string, SignalChecker> = {
   ma_bullish: (ind) => ind.maShort > ind.maLong,
 
   /** MA short < long (bearish trend) — minimum 0.1% gap to filter noise */
-  ma_bearish: (ind) => ind.maShort < ind.maLong && (ind.maLong - ind.maShort) / ind.maLong >= 0.001,
+  ma_bearish: (ind) => ind.maShort < ind.maLong,
 
   // ── RSI ─────────────────────────────────────────
   /** RSI oversold (RSI < oversold threshold) */

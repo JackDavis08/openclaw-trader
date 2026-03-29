@@ -752,10 +752,10 @@ async function main(): Promise<void> {
   }
 
   // ── Real CVD — aggTrade WebSocket ────────────────────
-  // TEMPORARILY DISABLED FOR TESTING — CVD causes crashes
-  // TODO: re-enable once CVD WebSocket stability is confirmed
+  // DISABLED PERMANENTLY - CVD causes crashes on this system
+  // Will re-enable once stability is confirmed
   const cvdManager = null;
-  log.info(`📊 Real CVD disabled for testing`);
+  log.info(`📊 Real CVD disabled (causes crashes)`);
 
   // Test connection — group by credentials_path to ping once per account
   const pingedCredentials = new Set<string>();

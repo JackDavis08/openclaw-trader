@@ -1,5 +1,9 @@
 import crypto from "crypto";
 import https from "https";
+import http from "http";
+import tls from "tls";
+import net from "net";
+import { URL } from "url";
 import type { Kline, TradeResult } from "../types.js";
 
 const BASE_URL = "api.binance.com";
@@ -27,7 +31,39 @@ function isBinanceError(obj: unknown): obj is BinanceErrorBody {
   );
 }
 
+function getProxyUrl(): string | undefined {
+  return process.env.HTTPS_PROXY || process.env.https_proxy ||
+         process.env.HTTP_PROXY || process.env.http_proxy;
+}
+
+function isBypassHost(hostname: string): boolean {
+  const noProxy = process.env.NO_PROXY || process.env.no_proxy || "";
+  const bypassList = noProxy.split(",").map(s => s.trim().toLowerCase());
+  const defaults = ["localhost", "127.*", "10.*", "172.16-31.*", "192.168.*"];
+  const allBypass = [...bypassList, ...defaults];
+
+  return allBypass.some(pattern => {
+    if (pattern === hostname.toLowerCase()) return true;
+    if (pattern.includes("*")) {
+      const regex = new RegExp("^" + pattern.replace(/\./g, "\\.").replace(/\*/g, ".*") + "$");
+      return regex.test(hostname.toLowerCase());
+    }
+    return false;
+  });
+}
+
 function request(options: https.RequestOptions): Promise<unknown> {
+  const proxyUrl = getProxyUrl();
+  const targetHost = options.hostname || "api.binance.com";
+
+  if (!proxyUrl || isBypassHost(targetHost)) {
+    return directRequest(options);
+  }
+
+  return proxyRequest(options, proxyUrl, targetHost);
+}
+
+function directRequest(options: https.RequestOptions): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const req = https.get(options, (res) => {
       let data = "";
@@ -36,7 +72,7 @@ function request(options: https.RequestOptions): Promise<unknown> {
         try {
           const parsed: unknown = JSON.parse(data) as unknown;
           if (isBinanceError(parsed)) {
-            reject(new Error(`Binance API Error ${parsed.code}: ${parsed.msg}`));
+            reject(new Error(`Binance API Error ${(parsed as BinanceErrorBody).code}: ${(parsed as BinanceErrorBody).msg}`));
           } else {
             resolve(parsed);
           }
@@ -46,9 +82,103 @@ function request(options: https.RequestOptions): Promise<unknown> {
       });
     });
     req.on("error", reject);
-    req.setTimeout(10000, () => {
-      req.destroy(new Error("Request timeout"));
+    req.setTimeout(10000, () => { req.destroy(new Error("Request timeout")); reject(new Error("Request timeout")); });
+  });
+}
+
+function proxyRequest(options: https.RequestOptions, proxyUrl: string, targetHost: string): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const proxyParsed = new URL(proxyUrl);
+    const proxyHost = proxyParsed.hostname;
+    const proxyPort = parseInt(proxyParsed.port) || 80;
+    const auth = proxyParsed.username && proxyParsed.password
+      ? { user: proxyParsed.username, pass: proxyParsed.password }
+      : undefined;
+
+    let socket: net.Socket;
+    let tlsSocket: tls.TLSSocket;
+    let connected = false;
+    let responseData = "";
+
+    function cleanup() {
+      try { tlsSocket?.destroy(); } catch { /* ignore */ }
+      try { socket?.destroy(); } catch { /* ignore */ }
+    }
+
+    socket = net.connect(proxyPort, proxyHost);
+
+    socket.on("connect", () => {
+      const connectLines = [
+        `CONNECT ${targetHost}:443 HTTP/1.0`,
+        `Host: ${targetHost}:443`
+      ];
+      if (auth) {
+        const creds = Buffer.from(`${auth.user}:${auth.pass}`).toString("base64");
+        connectLines.push(`Proxy-Authorization: Basic ${creds}`);
+      }
+      connectLines.push("", "");
+      socket.write(connectLines.join("\r\n"));
     });
+
+    socket.on("data", (buf: Buffer) => {
+      responseData += buf.toString();
+
+      if (!connected && responseData.includes("200") && responseData.includes("Connection established")) {
+        connected = true;
+        socket.removeAllListeners("data");
+
+        tlsSocket = tls.connect({
+          host: targetHost,
+          servername: targetHost,
+          socket: socket,
+          rejectUnauthorized: false
+        });
+
+        tlsSocket.on("secureConnect", () => {
+          // Build raw HTTP request
+          const method = options.method || "GET";
+          const path = options.path || "/";
+          const headers = options.headers || {};
+          const headerStr = Object.entries(headers)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join("\r\n");
+          const httpReq = `${method} ${path} HTTP/1.0\r\nHost: ${targetHost}\r\n${headerStr}\r\nConnection: close\r\n\r\n`;
+
+          tlsSocket.write(httpReq);
+
+          let responseData = "";
+          tlsSocket.on("data", (buf: Buffer) => {
+            responseData += buf.toString();
+          });
+          tlsSocket.on("end", () => {
+            // Parse HTTP response
+            const headerEnd = responseData.indexOf("\r\n\r\n");
+            if (headerEnd === -1) {
+              reject(new Error("Invalid proxy response"));
+              return;
+            }
+            const body = responseData.substring(headerEnd + 4);
+            try {
+              const parsed: unknown = JSON.parse(body) as unknown;
+              if (isBinanceError(parsed)) {
+                reject(new Error(`Binance API Error ${(parsed as BinanceErrorBody).code}: ${(parsed as BinanceErrorBody).msg}`));
+              } else {
+                resolve(parsed);
+              }
+            } catch (_e: unknown) {
+              reject(new Error(`Failed to parse response: ${body.substring(0, 200)}`));
+            }
+          });
+        });
+
+        tlsSocket.on("error", (e: Error) => { reject(e); cleanup(); });
+        tlsSocket.on("timeout", () => { reject(new Error("TLS timeout")); cleanup(); });
+      }
+    });
+
+    socket.on("error", (e: Error) => reject(e));
+    socket.on("timeout", () => { reject(new Error("Proxy timeout")); cleanup(); });
+    socket.setTimeout(10000);
   });
 }
 
@@ -106,131 +236,54 @@ export async function getBalance(cfg: BinanceConfig, asset = "USDT"): Promise<nu
 export async function marketBuy(
   cfg: BinanceConfig,
   symbol: string,
-  quoteQty: number // USDT amount to spend
+  quantity: number,
 ): Promise<TradeResult> {
   const ts = Date.now();
-  const params = `symbol=${symbol}&side=BUY&type=MARKET&quoteOrderQty=${quoteQty.toFixed(2)}&timestamp=${ts}`;
-  const sig = sign(params, cfg.secretKey);
-  const body = `${params}&signature=${sig}`;
+  const query = `symbol=${symbol}&side=BUY&type=MARKET&quantity=${quantity}&timestamp=${ts}`;
+  const sig = sign(query, cfg.secretKey);
+  const data = (await request({
+    hostname: BASE_URL,
+    path: `/api/v3/order?${query}&signature=${sig}`,
+    headers: { "X-MBX-APIKEY": cfg.apiKey },
+  })) as {
+    orderId: number;
+    executedQty: string;
+    cummulativeQuoteQty: string;
+    status: string;
+  };
 
-  return new Promise((resolve, reject) => {
-    const req = https.request(
-      {
-        hostname: BASE_URL,
-        path: "/api/v3/order",
-        method: "POST",
-        headers: {
-          "X-MBX-APIKEY": cfg.apiKey,
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Content-Length": Buffer.byteLength(body),
-        },
-      },
-      (res) => {
-        let data = "";
-        res.on("data", (c) => (data += c));
-        res.on("end", () => {
-          const obj = JSON.parse(data) as {
-            code?: number;
-            msg?: string;
-            orderId: number;
-            fills?: { price: string }[];
-            executedQty: string;
-            status: string;
-          };
-          if (obj.code && obj.code < 0) {
-            resolve({
-              symbol,
-              side: "buy",
-              price: 0,
-              quantity: 0,
-              orderId: "",
-              timestamp: ts,
-              status: "failed",
-              error: obj.msg,
-            });
-          } else {
-            const price = obj.fills?.[0] ? parseFloat(obj.fills[0].price) : 0;
-            resolve({
-              symbol,
-              side: "buy",
-              price,
-              quantity: parseFloat(obj.executedQty),
-              orderId: String(obj.orderId),
-              timestamp: ts,
-              status: "filled",
-            });
-          }
-        });
-      }
-    );
-    req.on("error", reject);
-    req.write(body);
-    req.end();
-  });
+  return {
+    orderId: data.orderId,
+    executedQty: parseFloat(data.executedQty),
+    cummulativeQuoteQty: parseFloat(data.cummulativeQuoteQty),
+    status: data.status,
+  };
 }
 
 /** @deprecated Use IExchange.marketSell() via createExchange() instead */
 export async function marketSell(
   cfg: BinanceConfig,
   symbol: string,
-  quantity: number
+  quantity: number,
 ): Promise<TradeResult> {
   const ts = Date.now();
-  const params = `symbol=${symbol}&side=SELL&type=MARKET&quantity=${quantity}&timestamp=${ts}`;
-  const sig = sign(params, cfg.secretKey);
-  const body = `${params}&signature=${sig}`;
+  const query = `symbol=${symbol}&side=SELL&type=MARKET&quantity=${quantity}&timestamp=${ts}`;
+  const sig = sign(query, cfg.secretKey);
+  const data = (await request({
+    hostname: BASE_URL,
+    path: `/api/v3/order?${query}&signature=${sig}`,
+    headers: { "X-MBX-APIKEY": cfg.apiKey },
+  })) as {
+    orderId: number;
+    executedQty: string;
+    cummulativeQuoteQty: string;
+    status: string;
+  };
 
-  return new Promise((resolve, reject) => {
-    const req = https.request(
-      {
-        hostname: BASE_URL,
-        path: "/api/v3/order",
-        method: "POST",
-        headers: {
-          "X-MBX-APIKEY": cfg.apiKey,
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Content-Length": Buffer.byteLength(body),
-        },
-      },
-      (res) => {
-        let data = "";
-        res.on("data", (c) => (data += c));
-        res.on("end", () => {
-          const obj = JSON.parse(data) as {
-            code?: number;
-            msg?: string;
-            orderId: number;
-            fills?: { price: string }[];
-            executedQty: string;
-          };
-          if (obj.code && obj.code < 0) {
-            resolve({
-              symbol,
-              side: "sell",
-              price: 0,
-              quantity: 0,
-              orderId: "",
-              timestamp: ts,
-              status: "failed",
-              error: obj.msg,
-            });
-          } else {
-            const price = obj.fills?.[0] ? parseFloat(obj.fills[0].price) : 0;
-            resolve({
-              symbol,
-              side: "sell",
-              price,
-              quantity: parseFloat(obj.executedQty),
-              orderId: String(obj.orderId),
-              timestamp: ts,
-              status: "filled",
-            });
-          }
-        });
-      }
-    );
-    req.on("error", reject);
-    req.write(body);
-    req.end();
-  });
+  return {
+    orderId: data.orderId,
+    executedQty: parseFloat(data.executedQty),
+    cummulativeQuoteQty: parseFloat(data.cummulativeQuoteQty),
+    status: data.status,
+  };
 }

@@ -323,25 +323,28 @@ export function processSignal(
   if (regime.confidence >= regimeThreshold) {
     regimeLabel = regime.label;
 
+    // breakout_watch: Don't reject signals, just apply regime_overrides and continue
+    // This allows trading in low-volatility markets with reduced position size
     if (regime.signalFilter === "breakout_watch") {
-      return {
-        indicators,
-        signal,
-        effectiveRisk,
-        rejected: true,
-        rejectionReason: `Regime filter [${regime.label}] ${regime.detail}`,
-        regimeLabel,
-      };
-    }
-
-    if (regime.signalFilter === "reduced_size") {
+      const override = cfg.regime_overrides?.breakout_watch;
+      if (override) {
+        effectiveRisk = { ...cfg.risk, ...override };
+        effectivePositionRatio = override.position_ratio ?? cfg.risk.position_ratio * 0.5;
+      }
+      // Don't reject - continue with reduced position size
+    } else if (regime.signalFilter === "reduced_size") {
       effectivePositionRatio = cfg.risk.position_ratio * 0.5;
-    }
-
-    // Merge regime_overrides
-    const override = cfg.regime_overrides?.[regime.signalFilter];
-    if (override) {
-      effectiveRisk = { ...cfg.risk, ...override };
+      // Merge regime_overrides
+      const override = cfg.regime_overrides?.reduced_size;
+      if (override) {
+        effectiveRisk = { ...cfg.risk, ...override };
+      }
+    } else {
+      // Merge regime_overrides for other regimes
+      const override = cfg.regime_overrides?.[regime.signalFilter];
+      if (override) {
+        effectiveRisk = { ...cfg.risk, ...override };
+      }
     }
   }
 

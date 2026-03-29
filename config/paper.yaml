@@ -220,6 +220,46 @@ scenarios:
       position_ratio: 0.2
       max_positions: 3
       max_position_per_symbol: 0.3
+  - id: aggressive-scalp
+    name: 激进套利 v1.0
+    enabled: true
+    strategy_id: aggressive-scalp
+    initial_usdt: 5000
+    fee_rate: 0.0004
+    slippage_percent: 0.03
+    exchange:
+      market: futures
+      testnet: true
+      credentials_path: .secrets/binance-futures-testnet.json
+      leverage:
+        enabled: true
+        default: 4
+        max: 4
+    risk:
+      stop_loss_percent: 0.5
+      take_profit_percent: 1.5
+      trailing_stop:
+        enabled: true
+        activation_percent: 0.8
+        callback_percent: 0.3
+      position_ratio: 0.20
+      max_positions: 3
+      max_position_per_symbol: 0.3
+      max_total_loss_percent: 5
+      daily_loss_limit_percent: 3
+      time_stop_hours: 1
+    symbols:
+      - BTCUSDT
+      - ETHUSDT
+      - BNBUSDT
+      - SOLUSDT
+      - ADAUSDT
+      - AVAXUSDT
+      - MATICUSDT
+      - DOGEUSDT
+      - DOTUSDT
+      - XRPUSDT
+
   - id: futures-long-short
     name: Futures Testnet ITS v4.0
     enabled: true

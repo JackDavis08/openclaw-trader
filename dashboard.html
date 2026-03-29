@@ -1,9 +1,9 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ITS V4.1 智能量化交易系统</title>
+<title>ITS V4.4 鏅鸿兘閲忓寲浜ゆ槗绯荤粺</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:Segoe UI,Microsoft YaHei,sans-serif;background:linear-gradient(135deg,#0a0f1c 0%,#1a1f3c 50%,#0d1225 100%);color:#e2e8f0;min-height:100vh;padding:20px}
@@ -157,14 +157,14 @@ body{font-family:Segoe UI,Microsoft YaHei,sans-serif;background:linear-gradient(
   <!-- Header -->
   <div class="h">
     <div class="hl">
-      <div class="logo">🤖</div>
+      <div class="logo">馃</div>
       <div>
-        <div class="ti">ITS V4.1 智能量化交易系统</div>
+        <div class="ti">ITS V4.4 鏅鸿兘閲忓寲浜ゆ槗绯荤粺</div>
         <div class="sub">
-          <span>ITS v4.1</span>
+          <span>ITS V4.4</span>
           <span>Binance Testnet</span>
-          <span>10 交易对</span>
-          <span>4x 杠杆</span>
+          <span>10 浜ゆ槗瀵?/span>
+          <span>4x 鏉犳潌</span>
         </div>
       </div>
     </div>
@@ -176,16 +176,16 @@ body{font-family:Segoe UI,Microsoft YaHei,sans-serif;background:linear-gradient(
 
   <!-- Strategy Parameters Bar -->
   <div class="sb">
-    <div class="si"><span class="sl">止盈:</span><span class="sv pro">1.5%+2.5%</span></div>
-    <div class="si"><span class="sl">止损:</span><span class="sv neg">0.5%</span></div>
-    <div class="si"><span class="sl">ROI衰减:</span><span class="sv">启用</span></div>
-    <div class="si"><span class="sl">移动止损:</span><span class="sv">0.5%</span></div>
-    <div class="si"><span class="sl">仓位:</span><span class="sv">25%</span></div>
-    <div class="si lv"><span class="sl">最大持仓:</span><span class="sv">5</span></div>
-    <div class="si"><span class="sl">杠杆:</span><span class="sv">4x</span></div>
-    <div class="si"><span class="sl">盈亏比:</span><span class="sv pro">≥1.5</span></div>
-    <div class="si lv"><span class="sl">相关性过滤:</span><span class="sv">70%</span></div>
-    <div class="si"><span class="sl">BTC对冲:</span><span class="sv pro">ON</span></div>
+    <div class="si"><span class="sl">姝㈢泩:</span><span class="sv pro">1.5%+2.5%</span></div>
+    <div class="si"><span class="sl">姝㈡崯:</span><span class="sv neg">0.5%</span></div>
+    <div class="si"><span class="sl">ROI琛板噺:</span><span class="sv">鍚敤</span></div>
+    <div class="si"><span class="sl">绉诲姩姝㈡崯:</span><span class="sv">0.5%</span></div>
+    <div class="si"><span class="sl">浠撲綅:</span><span class="sv">25%</span></div>
+    <div class="si lv"><span class="sl">鏈€澶ф寔浠?</span><span class="sv">5</span></div>
+    <div class="si"><span class="sl">鏉犳潌:</span><span class="sv">4x</span></div>
+    <div class="si"><span class="sl">鐩堜簭姣?</span><span class="sv pro">鈮?.5</span></div>
+    <div class="si lv"><span class="sl">鐩稿叧鎬ц繃婊?</span><span class="sv">70%</span></div>
+    <div class="si"><span class="sl">BTC瀵瑰啿:</span><span class="sv pro">ON</span></div>
   </div>
 
   <!-- Refresh Bar -->
@@ -194,46 +194,46 @@ body{font-family:Segoe UI,Microsoft YaHei,sans-serif;background:linear-gradient(
   <!-- KPI Cards -->
   <div class="g">
     <div class="k" id="kb">
-      <div class="ic">💰</div>
-      <div class="lb">余额</div>
+      <div class="ic">馃挵</div>
+      <div class="lb">浣欓</div>
       <div class="v wt" id="bal">--</div>
-      <div class="mt">初始 $5,000</div>
+      <div class="mt">鍒濆 $5,000</div>
     </div>
     <div class="k" id="cw">
-      <div class="ic">👛</div>
-      <div class="lb">钱包</div>
+      <div class="ic">馃憶</div>
+      <div class="lb">閽卞寘</div>
       <div class="v wt" id="wal">--</div>
       <div class="mt" id="walN">--</div>
     </div>
     <div class="k" id="cp">
-      <div class="ic">📈</div>
-      <div class="lb">持仓盈亏</div>
+      <div class="ic">馃搱</div>
+      <div class="lb">鎸佷粨鐩堜簭</div>
       <div class="v" id="tpn">--</div>
       <div class="mt" id="apn">--</div>
     </div>
     <div class="k" id="ca">
-      <div class="ic">💎</div>
-      <div class="lb">账户总盈亏</div>
+      <div class="ic">馃拵</div>
+      <div class="lb">璐︽埛鎬荤泩浜?/div>
       <div class="v" id="tpa">--</div>
       <div class="mt" id="apc">--</div>
     </div>
     <div class="k">
-      <div class="ic">🔄</div>
-      <div class="lb">交易次数</div>
+      <div class="ic">馃攧</div>
+      <div class="lb">浜ゆ槗娆℃暟</div>
       <div class="v bl" id="trades">--</div>
-      <div class="mt">胜率: <span id="wins">--</span></div>
+      <div class="mt">鑳滅巼: <span id="wins">--</span></div>
     </div>
     <div class="k">
-      <div class="ic">⏱</div>
-      <div class="lb">运行时长</div>
+      <div class="ic">鈴?/div>
+      <div class="lb">杩愯鏃堕暱</div>
       <div class="v bl" id="rt">--</div>
       <div class="mt">Session</div>
     </div>
     <div class="k">
-      <div class="ic">📊</div>
-      <div class="lb">持仓数</div>
+      <div class="ic">馃搳</div>
+      <div class="lb">鎸佷粨鏁?/div>
       <div class="v wt" id="pc">--</div>
-      <div class="mt">上限: 5</div>
+      <div class="mt">涓婇檺: 5</div>
     </div>
   </div>
 
@@ -242,12 +242,12 @@ body{font-family:Segoe UI,Microsoft YaHei,sans-serif;background:linear-gradient(
     <!-- Positions Panel -->
     <div class="se">
       <div class="sh">
-        <div class="st"><span>💹</span> 当前持仓 <span style="color:#64748b;font-weight:400;font-size:13px">(点击展开详情)</span></div>
+        <div class="st"><span>馃捁</span> 褰撳墠鎸佷粨 <span style="color:#64748b;font-weight:400;font-size:13px">(鐐瑰嚮灞曞紑璇︽儏)</span></div>
         <div class="sc" id="scb">0</div>
       </div>
       <div class="pc">
         <div class="pos-grid" id="pos">
-          <div class="e"><div class="ei">🔍</div><div class="et">正在扫描市场信号...</div></div>
+          <div class="e"><div class="ei">馃攳</div><div class="et">姝ｅ湪鎵弿甯傚満淇″彿...</div></div>
         </div>
       </div>
     </div>
@@ -257,11 +257,11 @@ body{font-family:Segoe UI,Microsoft YaHei,sans-serif;background:linear-gradient(
       <!-- AI Analysis -->
       <div class="se" style="margin-bottom:16px">
         <div class="ai">
-          <div class="aih"><span>🧠</span> AI 实时分析</div>
-          <div class="aic" id="aiC">正在加载市场数据...</div>
+          <div class="aih"><span>馃</span> AI 瀹炴椂鍒嗘瀽</div>
+          <div class="aic" id="aiC">姝ｅ湪鍔犺浇甯傚満鏁版嵁...</div>
           <div class="aim">
-            <div class="aiml">系统建议</div>
-            <div class="aimv" id="aiR">初始化中...</div>
+            <div class="aiml">绯荤粺寤鸿</div>
+            <div class="aimv" id="aiR">鍒濆鍖栦腑...</div>
           </div>
         </div>
       </div>
@@ -269,27 +269,27 @@ body{font-family:Segoe UI,Microsoft YaHei,sans-serif;background:linear-gradient(
       <!-- Strategy Parameters -->
       <div class="se">
         <div class="ai">
-          <div class="sph"><span>⚙️</span> 策略参数</div>
+          <div class="sph"><span>鈿欙笍</span> 绛栫暐鍙傛暟</div>
           <div class="spc">
-            <div class="spi"><div class="l">止盈</div><div class="v pro">1.5% + 2.5%</div></div>
-            <div class="spi"><div class="l">止损</div><div class="v neg">0.5%</div></div>
-            <div class="spi"><div class="l">时间止损</div><div class="v">30 分钟</div></div>
-            <div class="spi"><div class="l">杠杆</div><div class="v">4x</div></div>
-            <div class="spi"><div class="l">仓位</div><div class="v">25%</div></div>
-            <div class="spi"><div class="l">最大持仓</div><div class="v">5 个</div></div>
+            <div class="spi"><div class="l">姝㈢泩</div><div class="v pro">1.5% + 2.5%</div></div>
+            <div class="spi"><div class="l">姝㈡崯</div><div class="v neg">0.5%</div></div>
+            <div class="spi"><div class="l">鏃堕棿姝㈡崯</div><div class="v">30 鍒嗛挓</div></div>
+            <div class="spi"><div class="l">鏉犳潌</div><div class="v">4x</div></div>
+            <div class="spi"><div class="l">浠撲綅</div><div class="v">25%</div></div>
+            <div class="spi"><div class="l">鏈€澶ф寔浠?/div><div class="v">5 涓?/div></div>
             <div class="spi"><div class="l">RSI</div><div class="v">30 / 70</div></div>
-            <div class="spi"><div class="l">盈亏比</div><div class="v pro">≥ 1.5</div></div>
-            <div class="spi"><div class="l">相关过滤</div><div class="v">70%</div></div>
-            <div class="spi"><div class="l">BTC对冲</div><div class="v pro">ON</div></div>
-            <div class="spi"><div class="l">保护机制</div><div class="v pro">启用</div></div>
-            <div class="spi"><div class="l">市场自适应</div><div class="v pro">启用</div></div>
+            <div class="spi"><div class="l">鐩堜簭姣?/div><div class="v pro">鈮?1.5</div></div>
+            <div class="spi"><div class="l">鐩稿叧杩囨护</div><div class="v">70%</div></div>
+            <div class="spi"><div class="l">BTC瀵瑰啿</div><div class="v pro">ON</div></div>
+            <div class="spi"><div class="l">淇濇姢鏈哄埗</div><div class="v pro">鍚敤</div></div>
+            <div class="spi"><div class="l">甯傚満鑷€傚簲</div><div class="v pro">鍚敤</div></div>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="f">ITS V4.1 智能量化交易系统 | Auto-refresh 10s | © 2026</div>
+  <div class="f">ITS V4.4 鏅鸿兘閲忓寲浜ゆ槗绯荤粺 | Auto-refresh 10s | 漏 2026</div>
 </div>
 
 <script>
@@ -333,7 +333,7 @@ function calcDist(entry, mark, isLong) {
 
 function rPos(ps) {
   if (!ps || ps.length === 0) {
-    return '<div class="e"><div class="ei">🔍</div><div class="et">暂无持仓，正在扫描市场信号...</div></div>';
+    return '<div class="e"><div class="ei">馃攳</div><div class="et">鏆傛棤鎸佷粨锛屾鍦ㄦ壂鎻忓競鍦轰俊鍙?..</div></div>';
   }
   var h = '';
   for (var i = 0; i < ps.length; i++) {
@@ -355,15 +355,15 @@ function rPos(ps) {
 
     h += '<div class="pcard ' + (isLong ? 'ln' : 'sh') + ' slideIn" id="card_' + p.symbol + '" onclick="toggle(\'' + p.symbol + '\')">';
     h += '<div class="phead">';
-    h += '<div class="psym">' + p.symbol.replace('USDT', '') + ' <span style="font-size:12px;color:#64748b;font-weight:400">' + (isLong ? '▲ LONG' : '▼ SHORT') + '</span></div>';
-    h += '<div class="pdir ' + (isLong ? 'ln' : 'sh') + '">' + lev + 'x ' + (isLong ? '多' : '空') + ' <span class="parrow">▼</span></div>';
+    h += '<div class="psym">' + p.symbol.replace('USDT', '') + ' <span style="font-size:12px;color:#64748b;font-weight:400">' + (isLong ? '鈻?LONG' : '鈻?SHORT') + '</span></div>';
+    h += '<div class="pdir ' + (isLong ? 'ln' : 'sh') + '">' + lev + 'x ' + (isLong ? '澶? : '绌?) + ' <span class="parrow">鈻?/span></div>';
     h += '</div>';
 
     h += '<div class="pmain">';
     h += '<div class="pmleft">';
     h += '<div class="pmstat">';
-    h += '<span><span class="lbl">入场: </span><span class="val">$' + p.entry + '</span></span>';
-    h += '<span><span class="lbl">标记: </span><span class="val ' + nc + '">$' + p.mark + '</span></span>';
+    h += '<span><span class="lbl">鍏ュ満: </span><span class="val">$' + p.entry + '</span></span>';
+    h += '<span><span class="lbl">鏍囪: </span><span class="val ' + nc + '">$' + p.mark + '</span></span>';
     h += '</div></div>';
 
     h += '<div class="pmcenter">';
@@ -373,37 +373,37 @@ function rPos(ps) {
 
     h += '<div class="pmright">';
     h += '<div class="pmstat" style="text-align:right">';
-    h += '<span><span class="lbl">数量: </span><span class="val">' + qty + '</span></span>';
+    h += '<span><span class="lbl">鏁伴噺: </span><span class="val">' + qty + '</span></span>';
     h += '<span><span class="lbl">ROE: </span><span class="val ' + nc + '">' + S(p.roePct) + roe.toFixed(2) + '%</span></span>';
     h += '</div></div>';
     h += '</div>';
 
     h += '<div class="pmini">';
-    h += '<div class="pmb"><div class="lbl">保证金</div><div class="val">$' + margin.toFixed(2) + '</div></div>';
-    h += '<div class="pmb"><div class="lbl">浮动距离</div><div class="val ' + nc + '">' + S(dist.pct) + dist.pct + '%</div></div>';
-    h += '<div class="pmb"><div class="lbl">距止损</div><div class="val neg">$' + toSL.toFixed(2) + '</div></div>';
+    h += '<div class="pmb"><div class="lbl">淇濊瘉閲?/div><div class="val">$' + margin.toFixed(2) + '</div></div>';
+    h += '<div class="pmb"><div class="lbl">娴姩璺濈</div><div class="val ' + nc + '">' + S(dist.pct) + dist.pct + '%</div></div>';
+    h += '<div class="pmb"><div class="lbl">璺濇鎹?/div><div class="val neg">$' + toSL.toFixed(2) + '</div></div>';
     h += '</div>';
 
     h += '<div class="pdetails">';
     h += '<div class="pdgrid">';
-    h += '<div class="pditem"><div class="lbl">方向</div><div class="val ' + nc + '">' + (isLong ? '▲ 做多' : '▼ 做空') + '</div><div class="sub">杠杆 ' + lev + 'x</div></div>';
-    h += '<div class="pditem"><div class="lbl">入场价格</div><div class="val">$' + p.entry + '</div><div class="sub">成本 $' + (entry * qty).toFixed(2) + '</div></div>';
-    h += '<div class="pditem"><div class="lbl">标记价格</div><div class="val ' + nc + '">$' + p.mark + '</div><div class="sub">公允价格</div></div>';
-    h += '<div class="pditem"><div class="lbl">数量</div><div class="val">' + qty + '</div><div class="sub">名义价值 $' + (entry * qty).toFixed(2) + '</div></div>';
-    h += '<div class="pditem"><div class="lbl">保证金</div><div class="val">$' + margin.toFixed(2) + '</div><div class="sub">逐仓模式</div></div>';
-    h += '<div class="pditem"><div class="lbl">未实现盈亏</div><div class="val ' + nc + '">' + S(pnlVal) + '$' + pnlVal.toFixed(2) + '</div><div class="sub">' + S(pnlPct) + pnlPct + '%</div></div>';
+    h += '<div class="pditem"><div class="lbl">鏂瑰悜</div><div class="val ' + nc + '">' + (isLong ? '鈻?鍋氬' : '鈻?鍋氱┖') + '</div><div class="sub">鏉犳潌 ' + lev + 'x</div></div>';
+    h += '<div class="pditem"><div class="lbl">鍏ュ満浠锋牸</div><div class="val">$' + p.entry + '</div><div class="sub">鎴愭湰 $' + (entry * qty).toFixed(2) + '</div></div>';
+    h += '<div class="pditem"><div class="lbl">鏍囪浠锋牸</div><div class="val ' + nc + '">$' + p.mark + '</div><div class="sub">鍏厑浠锋牸</div></div>';
+    h += '<div class="pditem"><div class="lbl">鏁伴噺</div><div class="val">' + qty + '</div><div class="sub">鍚嶄箟浠峰€?$' + (entry * qty).toFixed(2) + '</div></div>';
+    h += '<div class="pditem"><div class="lbl">淇濊瘉閲?/div><div class="val">$' + margin.toFixed(2) + '</div><div class="sub">閫愪粨妯″紡</div></div>';
+    h += '<div class="pditem"><div class="lbl">鏈疄鐜扮泩浜?/div><div class="val ' + nc + '">' + S(pnlVal) + '$' + pnlVal.toFixed(2) + '</div><div class="sub">' + S(pnlPct) + pnlPct + '%</div></div>';
     h += '</div>';
 
     var progPct = Math.min(Math.abs(pnlPct) * 20, 100);
     h += '<div class="pprog">';
-    h += '<div class="pprogl"><span>止盈进度 (目标 2%)</span><span class="' + nc + '">' + pnlPct.toFixed(2) + '% / 2%</span></div>';
+    h += '<div class="pprogl"><span>姝㈢泩杩涘害 (鐩爣 2%)</span><span class="' + nc + '">' + pnlPct.toFixed(2) + '% / 2%</span></div>';
     h += '<div class="pprogbar"><div class="pprogfill ' + (pnlVal >= 0 ? 'pro' : 'neg') + '" style="width:' + progPct + '%"></div></div>';
     h += '</div>';
 
     h += '<div class="pdgrid" style="margin-top:12px">';
-    h += '<div class="pditem"><div class="lbl">距止损 (0.5%)</div><div class="val neg">-$' + toSL.toFixed(2) + '</div><div class="sub">0.5% 止损</div></div>';
-    h += '<div class="pditem"><div class="lbl">TP1 (1.5%)</div><div class="val pro">+$' + toTP1.toFixed(2) + '</div><div class="sub">首批止盈</div></div>';
-    h += '<div class="pditem"><div class="lbl">TP2 (2.5%)</div><div class="val pro">+$' + toTP2.toFixed(2) + '</div><div class="sub">二批止盈</div></div>';
+    h += '<div class="pditem"><div class="lbl">璺濇鎹?(0.5%)</div><div class="val neg">-$' + toSL.toFixed(2) + '</div><div class="sub">0.5% 姝㈡崯</div></div>';
+    h += '<div class="pditem"><div class="lbl">TP1 (1.5%)</div><div class="val pro">+$' + toTP1.toFixed(2) + '</div><div class="sub">棣栨壒姝㈢泩</div></div>';
+    h += '<div class="pditem"><div class="lbl">TP2 (2.5%)</div><div class="val pro">+$' + toTP2.toFixed(2) + '</div><div class="sub">浜屾壒姝㈢泩</div></div>';
     h += '</div></div>';
 
     h += '</div>';
@@ -412,7 +412,7 @@ function rPos(ps) {
 }
 
 function genAI() {
-  if (!D) return {rec: '⏳ 系统初始化中...', con: '正在获取市场数据，请稍候...'};
+  if (!D) return {rec: '鈴?绯荤粺鍒濆鍖栦腑...', con: '姝ｅ湪鑾峰彇甯傚満鏁版嵁锛岃绋嶅€?..'};
   var bal = parseFloat(D.balance || 0);
   var pnl = parseFloat(D.totalPnl || 0);
   var accPnl = parseFloat(D.totalAccountPnl || 0);
@@ -425,24 +425,24 @@ function genAI() {
   var con = '';
 
   if (pc === 0) {
-    rec = '🟡 扫描中 - 等待信号';
-    con = '<strong>状态:</strong> <span style="color:#64748b">无持仓</span><br>';
-    con += '<strong>账户余额:</strong> $' + bal.toFixed(2) + '<br>';
-    con += '<strong>历史交易:</strong> ' + tc + ' 笔 | 胜率 ' + wr + '%<br>';
-    con += '<strong>扫描对:</strong> BTC ETH BNB SOL ADA AVAX<br>';
+    rec = '馃煛 鎵弿涓?- 绛夊緟淇″彿';
+    con = '<strong>鐘舵€?</strong> <span style="color:#64748b">鏃犳寔浠?/span><br>';
+    con += '<strong>璐︽埛浣欓:</strong> $' + bal.toFixed(2) + '<br>';
+    con += '<strong>鍘嗗彶浜ゆ槗:</strong> ' + tc + ' 绗?| 鑳滅巼 ' + wr + '%<br>';
+    con += '<strong>鎵弿瀵?</strong> BTC ETH BNB SOL ADA AVAX<br>';
     con += '<strong>+ MATIC DOGE DOT XRP</strong>';
   } else if (pc >= 1 && pc <= 3) {
-    rec = '🟢 持仓中 - 监控信号';
-    con = '<strong>状态:</strong> <span class="pro">正常持仓 (' + pc + '/5)</span><br>';
-    con += '<strong>持仓盈亏:</strong> <span class="' + C(pnl) + '">' + S(pnl) + '$' + pnl.toFixed(2) + '</span><br>';
-    con += '<strong>账户总盈亏:</strong> <span class="' + C(accPnl) + '">' + S(accPnl) + '$' + accPnl.toFixed(2) + ' (' + S(D.totalAccountPnlPct) + D.totalAccountPnlPct + '%)</span><br>';
-    con += '<strong>历史交易:</strong> ' + tc + ' 笔 | 胜率 ' + wr + '%';
+    rec = '馃煝 鎸佷粨涓?- 鐩戞帶淇″彿';
+    con = '<strong>鐘舵€?</strong> <span class="pro">姝ｅ父鎸佷粨 (' + pc + '/5)</span><br>';
+    con += '<strong>鎸佷粨鐩堜簭:</strong> <span class="' + C(pnl) + '">' + S(pnl) + '$' + pnl.toFixed(2) + '</span><br>';
+    con += '<strong>璐︽埛鎬荤泩浜?</strong> <span class="' + C(accPnl) + '">' + S(accPnl) + '$' + accPnl.toFixed(2) + ' (' + S(D.totalAccountPnlPct) + D.totalAccountPnlPct + '%)</span><br>';
+    con += '<strong>鍘嗗彶浜ゆ槗:</strong> ' + tc + ' 绗?| 鑳滅巼 ' + wr + '%';
   } else if (pc >= 4) {
-    rec = '🟠 满仓 - 注意风险';
-    con = '<strong>状态:</strong> <span class="neg">高仓位 (' + pc + '/5)</span><br>';
-    con += '<strong>持仓盈亏:</strong> <span class="' + C(pnl) + '">' + S(pnl) + '$' + pnl.toFixed(2) + '</span><br>';
-    con += '<strong>建议:</strong> <span class="neg">等待止盈信号，考虑减仓</span><br>';
-    con += '<strong>历史交易:</strong> ' + tc + ' 笔 | 胜率 ' + wr + '%';
+    rec = '馃煚 婊′粨 - 娉ㄦ剰椋庨櫓';
+    con = '<strong>鐘舵€?</strong> <span class="neg">楂樹粨浣?(' + pc + '/5)</span><br>';
+    con += '<strong>鎸佷粨鐩堜簭:</strong> <span class="' + C(pnl) + '">' + S(pnl) + '$' + pnl.toFixed(2) + '</span><br>';
+    con += '<strong>寤鸿:</strong> <span class="neg">绛夊緟姝㈢泩淇″彿锛岃€冭檻鍑忎粨</span><br>';
+    con += '<strong>鍘嗗彶浜ゆ槗:</strong> ' + tc + ' 绗?| 鑳滅巼 ' + wr + '%';
   }
 
   if (ps.length > 0) {
@@ -451,8 +451,8 @@ function genAI() {
       if (parseFloat(ps[j].pnl) > parseFloat(best.pnl)) best = ps[j];
       if (parseFloat(ps[j].pnl) < parseFloat(worst.pnl)) worst = ps[j];
     }
-    con += '<br><br><strong>最佳持仓:</strong> ' + best.symbol + ' <span class="pro">' + S(best.pnl) + '$' + best.pnl + '</span>';
-    con += '<br><strong>最差持仓:</strong> ' + worst.symbol + ' <span class="' + C(worst.pnl) + '">' + S(worst.pnl) + '$' + worst.pnl + '</span>';
+    con += '<br><br><strong>鏈€浣虫寔浠?</strong> ' + best.symbol + ' <span class="pro">' + S(best.pnl) + '$' + best.pnl + '</span>';
+    con += '<br><strong>鏈€宸寔浠?</strong> ' + worst.symbol + ' <span class="' + C(worst.pnl) + '">' + S(worst.pnl) + '$' + worst.pnl + '</span>';
   }
   return {rec: rec, con: con};
 }
@@ -526,3 +526,4 @@ tick();
 </script>
 </body>
 </html>
+

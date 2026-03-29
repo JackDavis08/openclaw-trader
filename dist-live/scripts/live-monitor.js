@@ -1,0 +1,1003 @@
+/**
+ * Live / Testnet Live Monitoring Script
+ *
+ * Function: Connects to Binance real API (testnet or production),
+ * uses the unified signal engine for actual order placement.
+ *
+ * Uses exactly the same signal pipeline as monitor.ts (cron):
+ *   processSignal() → regime awareness → correlation filter → R:R → protection
+ *   → MTF trend filter → emergency halt → event calendar → sentiment gate → Kelly sizing
+ *
+ * Usage:
+ *   npm run live          # Testnet mode (loads testnet scenario from paper.yaml)
+ *   npm run live -- --scenario testnet-default
+ */
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+// Helper: get script directory reliably on Windows (tsx compatibility)
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+import { getKlines } from "../exchange/binance.js";
+import { checkMtfFilter } from "../strategy/mtf-filter.js";
+import { loadRecentTrades } from "../strategy/recent-trades.js";
+import { processSignal } from "../strategy/signal-engine.js";
+import { loadStrategyConfig, loadPaperConfig, loadLiveAccountConfigs, buildPaperRuntime } from "../config/loader.js";
+import { createLiveExecutor } from "../live/executor.js";
+import { reconcilePositions, formatReconcileReport } from "../live/reconcile.js";
+import { loadNewsReport, evaluateSentimentGate } from "../news/sentiment-gate.js";
+import { readSentimentCache } from "../news/sentiment-cache.js";
+import { notifySignal, notifyError, configureNotify } from "../notify/openclaw.js";
+import { loadAccount, saveAccount } from "../paper/account.js";
+import { calcCorrelationAdjustedSize, calcPortfolioExposure, formatPortfolioExposure, } from "../strategy/portfolio-risk.js";
+import { logSignal, closeSignal, logFilteredSignal } from "../strategy/signal-history.js";
+import { recordEquitySnapshot } from "../report/equity-tracker.js";
+import { readEmergencyHalt } from "../news/emergency-monitor.js";
+import { checkEventRisk, loadCalendar } from "../strategy/events-calendar.js";
+import { readCvdCache } from "../exchange/order-flow.js";
+import { fetchFundingRatePct } from "../strategy/funding-rate-signal.js";
+import { fetchLongShortRatios } from "../strategy/long-short-signal.js";
+import { getBtcDominanceTrend } from "../strategy/btc-dominance.js";
+import { calcKellyRatio } from "../strategy/kelly.js";
+import { getOnChainContext } from "../exchange/onchain-data.js";
+import { DataProvider } from "../exchange/data-provider.js";
+import { isKillSwitchActive, activateKillSwitch, checkBtcCrash, } from "../health/kill-switch.js";
+import { computeRebalanceOrders, shouldRebalance } from "../strategy/rebalance.js";
+import { applyParams } from "../optimization/objective.js";
+import { getOrCreateAdaptiveManager } from "../optimization/adaptive.js";
+import { createLogger } from "../logger.js";
+import { ping } from "../health/heartbeat.js";
+const POLL_INTERVAL_MS = 60 * 1000; // 1-minute polling
+const BTC_CRASH_THRESHOLD_PCT = 8; // BTC 1-hour drop trigger threshold (default 8%)
+const MAX_BTC_PRICE_BUFFER = 60; // Keep last 60 price points (~1 hour, 1 per minute)
+const PAIRLIST_MAX_AGE_MS = 25 * 60 * 60 * 1000; // pairlist file older than 25h considered stale
+const PAIRLIST_PATH = path.resolve(SCRIPT_DIR, "../../logs/current-pairlist.json");
+/**
+ * Load symbol list from dynamic pairlist file (P6.2).
+ * Returns null if file doesn't exist or is stale (>25h), causing caller to fall back to static list from config.
+ * @param heldSymbols Currently held symbols, force-kept (must not lose position monitoring due to pairlist)
+ */
+function loadPairlistSymbols(heldSymbols) {
+    try {
+        const raw = fs.readFileSync(PAIRLIST_PATH, "utf-8");
+        const data = JSON.parse(raw);
+        if (Date.now() - data.updatedAt > PAIRLIST_MAX_AGE_MS)
+            return null; // stale
+        // Merge held symbols (ensure open position symbols are always monitored, even if dropped from pairlist)
+        const merged = [...new Set([...data.symbols, ...heldSymbols])];
+        return merged;
+    }
+    catch {
+        return null; // Silently fall back when file doesn't exist or parse fails
+    }
+}
+/**
+ * Convert paper account positions to PositionWeight[] (for portfolio-risk usage)
+ * @param account   Current account snapshot
+ * @param priceMap  symbol → latest price (falls back to entry price if not found)
+ */
+function buildPositionWeights(account, priceMap) {
+    const entries = Object.entries(account.positions);
+    if (entries.length === 0)
+        return [];
+    const notionals = entries.map(([sym, pos]) => pos.quantity * (priceMap[sym] ?? pos.entryPrice));
+    const totalEquity = account.usdt + notionals.reduce((s, v) => s + v, 0);
+    if (totalEquity <= 0)
+        return [];
+    return entries.map(([sym, pos], i) => ({
+        symbol: sym,
+        side: pos.side ?? "long",
+        notionalUsdt: notionals[i] ?? 0,
+        weight: (notionals[i] ?? 0) / totalEquity,
+    }));
+}
+// ── Recent BTC price buffer (for crash detection) ──
+const btcPriceBuffer = [];
+/** Total loss alert cooldown (scenarioId → last notification timestamp), notify only once within 30 minutes */
+const _totalLossNotifyAt = new Map();
+const TOTAL_LOSS_NOTIFY_COOLDOWN_MS = 30 * 60_000;
+const STALE_MAP_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+/** Periodically clean up stale entries in module-level Maps */
+function cleanupStaleMaps() {
+    const cutoff = Date.now() - STALE_MAP_MAX_AGE_MS;
+    for (const [key, ts] of _totalLossNotifyAt) {
+        if (ts < cutoff)
+            _totalLossNotifyAt.delete(key);
+    }
+    for (const [key, ts] of _filteredCooldown) {
+        if (ts < cutoff)
+            _filteredCooldown.delete(key);
+    }
+    for (const [key, ts] of _signalNotifyCooldown) {
+        if (ts < cutoff)
+            _signalNotifyCooldown.delete(key);
+    }
+}
+// ── Graceful shutdown flag (wrapped in object to avoid no-unnecessary-condition false positive) ──
+const _state = { shuttingDown: false };
+// ── Duplicate filtered signal dedup (same symbol+signal only logs once within 5 minutes) ────────────
+const _filteredCooldown = new Map(); // "${symbol}:${signalType}" → lastLogMs
+const FILTERED_LOG_COOLDOWN_MS = 5 * 60 * 1000;
+/** Returns true = should log (first time or cooldown expired), updates timestamp */
+function shouldLogFiltered(symbol, signalType) {
+    const key = `${symbol}:${signalType}`;
+    const last = _filteredCooldown.get(key) ?? 0;
+    if (Date.now() - last < FILTERED_LOG_COOLDOWN_MS)
+        return false;
+    _filteredCooldown.set(key, Date.now());
+    return true;
+}
+// ── Signal notification dedup (same scenarioId+symbol+type only notifies once within 30 minutes) ────
+const _signalNotifyCooldown = new Map(); // "${scenarioId}:${symbol}:${type}" → lastNotifyMs
+const SIGNAL_NOTIFY_COOLDOWN_MS = 30 * 60_000;
+function shouldNotifySignal(scenarioId, symbol, signalType) {
+    const key = `${scenarioId}:${symbol}:${signalType}`;
+    const last = _signalNotifyCooldown.get(key) ?? 0;
+    if (Date.now() - last < SIGNAL_NOTIFY_COOLDOWN_MS)
+        return false;
+    _signalNotifyCooldown.set(key, Date.now());
+    return true;
+}
+/** When signal becomes NONE or passes filter, clear the cooldown state for that symbol */
+function clearFilteredCooldown(symbol) {
+    for (const key of _filteredCooldown.keys()) {
+        if (key.startsWith(`${symbol}:`))
+            _filteredCooldown.delete(key);
+    }
+}
+// ── P6.2 On-chain stablecoin flow cache (refresh hourly, write to file for monitor.ts to read) ──
+const ONCHAIN_CACHE_PATH = path.resolve(SCRIPT_DIR, "../../logs/onchain-cache.json");
+const STABLECOIN_REFRESH_MS = 60 * 60 * 1000; // Refresh every 60 minutes
+let _stablecoinSignal;
+let _stablecoinSignalFetchedAt = 0;
+function readOnchainCache() {
+    try {
+        const raw = fs.readFileSync(ONCHAIN_CACHE_PATH, "utf-8");
+        const d = JSON.parse(raw);
+        if (Date.now() - d.fetchedAt > STABLECOIN_REFRESH_MS * 2)
+            return undefined; // Over 2h considered stale
+        return d.stablecoinSignal;
+    }
+    catch {
+        return undefined;
+    }
+}
+async function refreshStablecoinSignal() {
+    if (Date.now() - _stablecoinSignalFetchedAt < STABLECOIN_REFRESH_MS)
+        return;
+    try {
+        const ctx = await getOnChainContext();
+        _stablecoinSignal = ctx.stablecoinSignal;
+        _stablecoinSignalFetchedAt = Date.now();
+        // Write to file for monitor.ts (cron process) to read
+        fs.writeFileSync(ONCHAIN_CACHE_PATH, JSON.stringify({
+            stablecoinSignal: _stablecoinSignal,
+            fetchedAt: _stablecoinSignalFetchedAt,
+        }));
+        log.info(`🔗 On-chain stablecoin signal refreshed: ${_stablecoinSignal}`);
+    }
+    catch (e) {
+        log.warn(`On-chain refresh failed: ${e instanceof Error ? e.message : String(e)}`);
+        _stablecoinSignal ??= readOnchainCache();
+    }
+}
+const log = createLogger("live-monitor");
+// ── Timeframe → cache TTL (staleSec) ──────────────────────────────────
+// staleSec = candle duration - 90s, ensures refresh within 60s after new candle forms
+const TF_STALE_MAP = {
+    "1m": 30, // 1-min candle → 30s cache
+    "5m": 210, // 5m → 3.5min
+    "15m": 810, // 15m → 13.5min
+    "1h": 3510, // 1h → 58.5min
+    "4h": 14310, // 4h → 3h 58.5min
+    "1d": 86310, // 1d → 23h 59.5min
+};
+function tfStaleSec(tf) {
+    return TF_STALE_MAP[tf] ?? 3510; // Unknown TF falls back to 1h
+}
+// ─────────────────────────────────────────────────────
+// Single round signal detection + execution (all symbols for one scenario)
+// ─────────────────────────────────────────────────────
+async function processSymbol(symbol, cfg, provider) {
+    const label = cfg.exchange.testnet ? "[TESTNET]" : "[LIVE]";
+    // ── Fetch candlesticks ─────────────────────────────────────
+    const macdCfg = cfg.strategy.macd;
+    const macdMinBars = macdCfg.enabled ? macdCfg.slow + macdCfg.signal + 1 : 0;
+    const limit = Math.max(cfg.strategy.ma.long, cfg.strategy.rsi.period, macdMinBars) + 10;
+    let klines = provider.get(symbol, cfg.timeframe);
+    if (!klines || klines.length < limit) {
+        // eslint-disable-next-line @typescript-eslint/no-deprecated
+        klines = await getKlines(symbol, cfg.timeframe, limit + 1);
+        if (klines.length < limit) {
+            log.info(`${label} ${symbol}: Insufficient candlesticks (${klines.length}/${limit}), skipping`);
+            return;
+        }
+    }
+    // ── Build external context (identical to monitor.ts) ─────────
+    let externalCvd;
+    let externalFundingRate;
+    let externalBtcDom;
+    let externalBtcDomChange;
+    // Funding rate
+    try {
+        const frPct = await fetchFundingRatePct(symbol);
+        if (frPct !== undefined)
+            externalFundingRate = frPct;
+    }
+    catch { /* silently skip on failure */ }
+    // BTC dominance
+    try {
+        const domTrend = getBtcDominanceTrend();
+        if (!isNaN(domTrend.latest)) {
+            externalBtcDom = domTrend.latest;
+            externalBtcDomChange = domTrend.change;
+        }
+    }
+    catch { /* silently skip on failure */ }
+    // Long/Short ratio
+    let externalLSRatio;
+    let externalTopLSRatio;
+    try {
+        const lsData = await fetchLongShortRatios(symbol);
+        if (lsData) {
+            externalLSRatio = lsData.globalLSRatio;
+            externalTopLSRatio = lsData.topAccountLSRatio;
+        }
+    }
+    catch { /* silently skip */ }
+    // CVD
+    try {
+        const realCvd = readCvdCache(symbol);
+        const maxAgeMs = 5 * 60_000;
+        if (realCvd?.cvd !== undefined && realCvd.updatedAt !== undefined &&
+            Date.now() - realCvd.updatedAt < maxAgeMs) {
+            externalCvd = realCvd.cvd;
+        }
+    }
+    catch { /* silently skip on failure */ }
+    // Current position direction + correlation candlesticks
+    const currentAccount = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
+    // side is optional (old data compatibility), defaults to "long" when position exists but side is undefined, prevents treating as "no position"
+    const _pos = currentAccount.positions[symbol];
+    const currentPosSide = _pos ? (_pos.side ?? "long") : undefined;
+    const heldKlinesMap = {};
+    if (cfg.risk.correlation_filter?.enabled) {
+        const heldSymbols = Object.keys(currentAccount.positions).filter((s) => s !== symbol);
+        const corrLookback = cfg.risk.correlation_filter.lookback;
+        await Promise.all(heldSymbols.map(async (sym) => {
+            try {
+                const cached = provider.get(sym, cfg.timeframe);
+                // eslint-disable-next-line @typescript-eslint/no-deprecated
+                heldKlinesMap[sym] = cached ?? await getKlines(sym, cfg.timeframe, corrLookback + 1);
+            }
+            catch { /* skip on fetch failure */ }
+        }));
+    }
+    // ── Adaptive parameters overlay (bandit-based tuning) ──────────
+    let effectiveCfg = cfg;
+    let adaptiveMgr;
+    if (cfg.adaptive?.enabled && cfg.adaptive.mode === "bandit") {
+        adaptiveMgr = getOrCreateAdaptiveManager(cfg);
+        effectiveCfg = applyParams(adaptiveMgr.getActiveParams(), cfg);
+        effectiveCfg = { ...cfg, ...effectiveCfg, paper: cfg.paper, exchange: cfg.exchange };
+    }
+    // ── Unified signal engine (identical to monitor.ts) ──────────
+    const externalCtx = {
+        ...(externalCvd !== undefined ? { cvd: externalCvd } : {}),
+        ...(externalFundingRate !== undefined ? { fundingRate: externalFundingRate } : {}),
+        ...(externalBtcDom !== undefined ? { btcDominance: externalBtcDom } : {}),
+        ...(externalBtcDomChange !== undefined ? { btcDomChange: externalBtcDomChange } : {}),
+        ...(externalLSRatio !== undefined ? { longShortRatio: externalLSRatio } : {}),
+        ...(externalTopLSRatio !== undefined ? { topLongShortRatio: externalTopLSRatio } : {}),
+        ...(currentPosSide !== undefined ? { currentPosSide } : {}),
+        ...(Object.keys(heldKlinesMap).length > 0 ? { heldKlinesMap } : {}),
+        ...(_stablecoinSignal !== undefined ? { stablecoinSignal: _stablecoinSignal } : {}),
+    };
+    const recentTrades = loadRecentTrades();
+    const engineResult = processSignal(symbol, klines, effectiveCfg, externalCtx, recentTrades);
+    if (!engineResult.indicators) {
+        log.info(`${label} ${symbol}: Indicator calculation failed, skipping`);
+        return;
+    }
+    const { indicators, signal, effectiveRisk, effectivePositionRatio, rejected, rejectionReason, regimeLabel } = engineResult;
+    // ── Deduplicate rejected signals: don't log the same filter reason within 5 minutes ──
+    if (rejected && !shouldLogFiltered(symbol, signal.type))
+        return;
+    log.info(`${label} ${symbol}: RSI=${indicators.rsi.toFixed(1)} ` +
+        `EMA${cfg.strategy.ma.short}=$${indicators.maShort.toFixed(2)} ` +
+        `EMA${cfg.strategy.ma.long}=$${indicators.maLong.toFixed(2)} ` +
+        `ATR=${indicators.atr?.toFixed(2) ?? "N/A"} ` +
+        `→ ${signal.type.toUpperCase()}` +
+        (regimeLabel ? ` [${regimeLabel}]` : ""));
+    if (rejected) {
+        log.info(`${label} ${symbol}: 🚫 ${rejectionReason ?? "filtered"}`);
+        if (signal.type !== "none") {
+            logFilteredSignal({ symbol, type: signal.type, price: indicators.price, filter: "engine", reason: rejectionReason ?? "filtered", scenarioId: cfg.paper.scenarioId, source: "live" });
+        }
+        return;
+    }
+    if (signal.type === "none") {
+        clearFilteredCooldown(symbol); // Signal disappeared → reset, log normally next time it appears
+        return;
+    }
+    // ── Additional filters for entry signals (buy/short) ─────────────
+    if (signal.type === "buy" || signal.type === "short") {
+        // Emergency halt
+        const emergency = readEmergencyHalt();
+        if (emergency.halt) {
+            log.warn(`${label} ${symbol}: ⛔ Emergency halt — ${emergency.reason ?? "breaking high-risk news"}`);
+            logFilteredSignal({ symbol, type: signal.type, price: indicators.price, filter: "emergency", reason: emergency.reason ?? "breaking high-risk news", scenarioId: cfg.paper.scenarioId, source: "live" });
+            return;
+        }
+        // P6.5 Event calendar risk control
+        try {
+            const eventRisk = checkEventRisk(loadCalendar());
+            if (eventRisk.phase === "during") {
+                log.info(`${label} ${symbol}: ⏸ Event window (${eventRisk.eventName}), pausing new entries`);
+                logFilteredSignal({ symbol, type: signal.type, price: indicators.price, filter: "event", reason: `Event window: ${eventRisk.eventName}`, scenarioId: cfg.paper.scenarioId, source: "live" });
+                return;
+            }
+            if ((eventRisk.phase === "pre" || eventRisk.phase === "post") && eventRisk.positionRatioMultiplier < 1.0) {
+                log.warn(`${label} ${symbol}: ⚠️ Event risk period (${eventRisk.eventName}), position ×${eventRisk.positionRatioMultiplier}`);
+            }
+        }
+        catch { /* silently skip on calendar load failure */ }
+        // MTF trend filter — using shared function (A-001 fix)
+        const mtfCheck = await checkMtfFilter(symbol, signal.type, cfg, provider);
+        if (mtfCheck.trendBull !== null) {
+            log.info(`${label} ${symbol}: MTF(${cfg.trend_timeframe}) → ${mtfCheck.trendBull ? "Bullish✅" : "Bearish🚫"}`);
+        }
+        if (mtfCheck.filtered) {
+            log.info(`${label} ${symbol}: 🚫 ${mtfCheck.reason}`);
+            logFilteredSignal({ symbol, type: signal.type, price: indicators.price, filter: "mtf", reason: mtfCheck.reason ?? "MTF trend filter", scenarioId: cfg.paper.scenarioId, source: "live" });
+            return;
+        }
+        // Sentiment gate
+        const newsReport = loadNewsReport();
+        const baseForGate = effectivePositionRatio ?? effectiveRisk.position_ratio;
+        const sentimentCache = readSentimentCache();
+        const gate = evaluateSentimentGate(signal, newsReport, baseForGate, sentimentCache);
+        log.info(`${label} ${symbol}: Sentiment gate → ${gate.action} (${gate.reason})`);
+        if (gate.action === "skip") {
+            logFilteredSignal({ symbol, type: signal.type, price: indicators.price, filter: "sentiment", reason: gate.reason, scenarioId: cfg.paper.scenarioId, source: "live" });
+            return;
+        }
+        // Kelly dynamic position sizing
+        let effectiveRatio = "positionRatio" in gate ? gate.positionRatio : baseForGate;
+        if (cfg.risk.position_sizing === "kelly") {
+            try {
+                const histPath = path.resolve(SCRIPT_DIR, "../../logs/signal-history.jsonl");
+                if (fs.existsSync(histPath)) {
+                    const lines = fs.readFileSync(histPath, "utf-8").split("\n").filter(Boolean);
+                    const closed = lines
+                        .map((l) => { try {
+                        return JSON.parse(l);
+                    }
+                    catch {
+                        return null;
+                    } })
+                        .filter((r) => r?.status === "closed" && r.pnlPercent !== undefined);
+                    const kellyResult = calcKellyRatio(closed, {
+                        ...(cfg.risk.kelly_lookback !== undefined ? { lookback: cfg.risk.kelly_lookback } : {}),
+                        ...(cfg.risk.kelly_half !== undefined ? { half: cfg.risk.kelly_half } : {}),
+                        ...(cfg.risk.kelly_min_ratio !== undefined ? { minRatio: cfg.risk.kelly_min_ratio } : {}),
+                        ...(cfg.risk.kelly_max_ratio !== undefined ? { maxRatio: cfg.risk.kelly_max_ratio } : {}),
+                        minSamples: cfg.risk.kelly_min_samples ?? 30,
+                        fallback: cfg.risk.position_ratio,
+                    });
+                    log.info(`${label} ${symbol}: 🎯 Kelly → ${kellyResult.reason}`);
+                    effectiveRatio = kellyResult.ratio;
+                }
+            }
+            catch { /* Kelly calculation failure does not affect main flow */ }
+        }
+        // ── Portfolio Risk: correlation heat continuous position reduction (P7.1) ────────────────────
+        // After Kelly, before entry, further adjust position ratio using portfolio correlation heat
+        // Complements binary correlation filter in signal-engine: signal-engine rejects strong correlation,
+        // this reduces positions continuously for moderate correlation (higher heat = smaller position)
+        try {
+            const priceMap = { [symbol]: indicators.price };
+            for (const [sym, klns] of Object.entries(heldKlinesMap)) {
+                const last = klns.at(-1);
+                if (last)
+                    priceMap[sym] = last.close;
+            }
+            const posWeights = buildPositionWeights(currentAccount, priceMap)
+                .filter((pw) => pw.symbol !== symbol); // Exclude self
+            if (posWeights.length > 0) {
+                const klinesBySymbol = { [symbol]: klines, ...heldKlinesMap };
+                const portfolioHeat = calcCorrelationAdjustedSize(symbol, signal.type === "buy" ? "long" : "short", effectiveRatio, posWeights, klinesBySymbol);
+                log.info(`${label} ${symbol}: 📊 Portfolio heat ${(portfolioHeat.heat * 100).toFixed(0)}% → ${portfolioHeat.decision} (${portfolioHeat.reason})`);
+                if (portfolioHeat.decision === "blocked") {
+                    log.info(`${label} ${symbol}: 🚫 Portfolio heat too high, entry rejected`);
+                    return;
+                }
+                effectiveRatio = portfolioHeat.adjustedPositionRatio;
+            }
+        }
+        catch { /* portfolio heat calculation failure does not block main flow */ }
+        // ── Build final config → execute ──────────────────────────
+        const adjustedCfg = { ...cfg, risk: { ...effectiveRisk, position_ratio: effectiveRatio } };
+        const liveExecutor = createLiveExecutor(adjustedCfg);
+        // buy/short: notify immediately (new entry signal), with 30-min dedup cooldown per scenario+symbol
+        // sell/cover: notify only if position exists (avoid false alerts when nothing to close)
+        if (cfg.notify.on_signal) {
+            if (shouldNotifySignal(cfg.paper.scenarioId, symbol, signal.type)) {
+                notifySignal(signal);
+            }
+        }
+        if (signal.type === "buy") {
+            const result = await liveExecutor.handleBuy(signal);
+            if (result.skipped) {
+                log.info(`${label} ${symbol}: Skipped — ${result.skipped}`);
+            }
+            else if (result.trade) {
+                log.info(`${label} ${symbol}: Buy successful @${result.trade.price.toFixed(4)} (position ${(effectiveRatio * 100).toFixed(0)}%), orderId=${result.orderId ?? "N/A"}`);
+                recordSignalHistory(symbol, "buy", result.trade.price, indicators, signal, cfg);
+                // Adaptive: attribute arm to opened position
+                if (adaptiveMgr) {
+                    try {
+                        const acc = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
+                        if (acc.positions[symbol]) {
+                            acc.positions[symbol].adaptiveArmId = adaptiveMgr.getActiveArmId();
+                            saveAccount(acc, cfg.paper.scenarioId);
+                        }
+                    }
+                    catch { /* non-fatal */ }
+                }
+            }
+        }
+        else {
+            const result = await liveExecutor.handleShort(signal);
+            if (result.skipped) {
+                log.info(`${label} ${symbol}: Short skipped — ${result.skipped}`);
+            }
+            else if (result.trade) {
+                log.info(`${label} ${symbol}: Short opened @${result.trade.price.toFixed(4)} (position ${(effectiveRatio * 100).toFixed(0)}%), orderId=${result.orderId ?? "N/A"}`);
+                recordSignalHistory(symbol, "short", result.trade.price, indicators, signal, cfg);
+                // Adaptive: attribute arm to opened position
+                if (adaptiveMgr) {
+                    try {
+                        const acc = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
+                        if (acc.positions[symbol]) {
+                            acc.positions[symbol].adaptiveArmId = adaptiveMgr.getActiveArmId();
+                            saveAccount(acc, cfg.paper.scenarioId);
+                        }
+                    }
+                    catch { /* non-fatal */ }
+                }
+            }
+        }
+    }
+    else if (signal.type === "sell") {
+        // Close long — only notify if position actually exists
+        const account = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
+        const sigHistId = account.positions[symbol]?.signalHistoryId;
+        const exitArmId = account.positions[symbol]?.adaptiveArmId;
+        if (account.positions[symbol]) {
+            if (cfg.notify.on_signal)
+                notifySignal(signal);
+            const liveExecutor = createLiveExecutor(cfg);
+            const result = await liveExecutor.handleSell(symbol, signal.price, signal.reason.join(", "));
+            if (result.trade) {
+                log.info(`${label} ${symbol}: Sell successful, orderId=${result.orderId ?? "N/A"}`);
+                if (sigHistId) {
+                    try {
+                        closeSignal(sigHistId, result.trade.price, "signal", result.trade.pnl);
+                    }
+                    catch { /* skip */ }
+                }
+                // Adaptive: reward attribution
+                if (adaptiveMgr && result.trade.pnlPercent !== undefined) {
+                    try {
+                        adaptiveMgr.onTradeClosed({ pnlPercent: result.trade.pnlPercent, armId: exitArmId });
+                    }
+                    catch { /* non-fatal */ }
+                }
+            }
+        }
+        else {
+            log.info(`${label} ${symbol}: Sell signal skipped — no open position`);
+        }
+    }
+    else {
+        // Close short — only notify if position actually exists
+        const account = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
+        const sigHistId = account.positions[symbol]?.signalHistoryId;
+        const exitArmId = account.positions[symbol]?.adaptiveArmId;
+        if (account.positions[symbol]) {
+            if (cfg.notify.on_signal)
+                notifySignal(signal);
+            const liveExecutor = createLiveExecutor(cfg);
+            const result = await liveExecutor.handleCover(symbol, signal.price, signal.reason.join(", "));
+            if (result.trade) {
+                log.info(`${label} ${symbol}: Cover successful, orderId=${result.orderId ?? "N/A"}`);
+                if (sigHistId) {
+                    try {
+                        closeSignal(sigHistId, result.trade.price, "signal", result.trade.pnl);
+                    }
+                    catch { /* skip */ }
+                }
+                // Adaptive: reward attribution
+                if (adaptiveMgr && result.trade.pnlPercent !== undefined) {
+                    try {
+                        adaptiveMgr.onTradeClosed({ pnlPercent: result.trade.pnlPercent, armId: exitArmId });
+                    }
+                    catch { /* non-fatal */ }
+                }
+            }
+        }
+        else {
+            log.info(`${label} ${symbol}: Cover signal skipped — no open position`);
+        }
+    }
+}
+/** Record signal history and write back to paper account */
+function recordSignalHistory(symbol, type, entryPrice, indicators, signal, cfg) {
+    try {
+        const sigId = logSignal({
+            symbol,
+            type,
+            entryPrice,
+            conditions: {
+                maShort: indicators.maShort,
+                maLong: indicators.maLong,
+                rsi: indicators.rsi,
+                ...(indicators.atr !== undefined && { atr: indicators.atr }),
+                triggeredRules: signal.reason,
+            },
+            scenarioId: cfg.paper.scenarioId,
+            source: "live",
+        });
+        const acc = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
+        if (acc.positions[symbol]) {
+            acc.positions[symbol].signalHistoryId = sigId;
+            saveAccount(acc, cfg.paper.scenarioId);
+        }
+    }
+    catch { /* does not affect main flow */ }
+}
+// ─────────────────────────────────────────────────────
+// Stop Loss / Take Profit Polling
+// ─────────────────────────────────────────────────────
+async function checkExits(cfg, executor) {
+    const execInstance = executor ?? createLiveExecutor(cfg);
+    const label = cfg.exchange.testnet ? "[TESTNET]" : "[LIVE]";
+    // Get current prices
+    const prices = {};
+    for (const symbol of cfg.symbols) {
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
+            const kl = await getKlines(symbol, "1m", 2);
+            if (kl.length > 0)
+                prices[symbol] = kl[kl.length - 1]?.close ?? 0;
+        }
+        catch (_e) { /* ignore price fetch failure for individual symbol */ }
+    }
+    // Snapshot current account (to read signalHistoryId afterwards, positions still exist at this point)
+    const accountSnapshot = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
+    const exits = await execInstance.checkExitConditions(prices);
+    // DCA tranche check (symmetric with monitor.ts / ws-monitor.ts)
+    if (cfg.risk.dca?.enabled) {
+        try {
+            const dcaResults = await execInstance.checkDcaTranches(prices);
+            for (const { symbol, side, usdtAmount } of dcaResults) {
+                log.info(`${label} ${symbol}: 💰 DCA ${side} $${usdtAmount.toFixed(2)}`);
+            }
+        }
+        catch (e) {
+            log.warn(`${label} DCA check failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+    }
+    // G3: Check timed-out orders each round (orphan entry orders cancelled, orphan exit orders cancelled and re-triggered next round)
+    // Must reload account after checkExitConditions to avoid overwriting closed position state with stale snapshot
+    const freshAccount = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
+    await execInstance.checkOrderTimeouts(freshAccount);
+    for (const e of exits) {
+        log.info(`${label} ${e.symbol}: Exit triggered — ${e.reason} (${e.pnlPercent.toFixed(2)}%)`);
+        // Adaptive: reward attribution on exit
+        if (cfg.adaptive?.enabled && cfg.adaptive.mode === "bandit") {
+            try {
+                const mgr = getOrCreateAdaptiveManager(cfg);
+                mgr.onTradeClosed({ pnlPercent: e.pnlPercent, armId: accountSnapshot.positions[e.symbol]?.adaptiveArmId });
+            }
+            catch { /* non-fatal */ }
+        }
+        // Close signal history record (read signalHistoryId from accountSnapshot, position snapshot before closing)
+        const sigHistId = accountSnapshot.positions[e.symbol]?.signalHistoryId;
+        if (sigHistId) {
+            try {
+                const exitReason = e.reason.includes("stop_loss") || e.reason.includes("Stop loss") ? "stop_loss"
+                    : e.reason.includes("take_profit") || e.reason.includes("Take profit") ? "take_profit"
+                        : e.reason.includes("trailing") || e.reason.includes("Trailing") ? "trailing_stop"
+                            : e.reason.includes("time") || e.reason.includes("Time") ? "time_stop"
+                                : "signal";
+                closeSignal(sigHistId, e.trade.price, exitReason, e.trade.pnl);
+            }
+            catch { /* skip */ }
+        }
+        if (cfg.notify.on_stop_loss || cfg.notify.on_take_profit) {
+            notifySignal({
+                symbol: e.symbol,
+                type: "sell",
+                price: e.trade.price,
+                indicators: { maShort: 0, maLong: 0, rsi: 0, price: e.trade.price, volume: 0, avgVolume: 0 },
+                reason: [e.reason],
+                timestamp: Date.now(),
+            });
+        }
+    }
+}
+// ─────────────────────────────────────────────────────
+// Main Loop
+// ─────────────────────────────────────────────────────
+async function main() {
+    // Load config
+    const base = loadStrategyConfig();
+    const paperCfg = loadPaperConfig();
+    // Configure notification channel from strategy config (apply once, globally)
+    console.log(`[DEBUG] notify.channel=${base.notify.channel}, notify.target=${base.notify.target}`);
+    configureNotify(base.notify.channel ?? "telegram", base.notify.target ?? "");
+    // CLI arguments
+    const scenarioArg = process.argv.find((a) => a.startsWith("--scenario="))?.split("=")[1];
+    const accountArg = process.argv.find((a) => a.startsWith("--account="))?.split("=")[1];
+    // ── v0.6 Multi-account: try live.yaml accounts first, fall back to testnet from paper.yaml ──
+    let runtimes;
+    let mode;
+    const liveAccountRuntimes = loadLiveAccountConfigs();
+    if (liveAccountRuntimes.length > 0) {
+        mode = "multi-account";
+        runtimes = liveAccountRuntimes;
+        // --account=ID filter
+        if (accountArg) {
+            runtimes = runtimes.filter((r) => r.paper.scenarioId.startsWith(`${accountArg}:`));
+        }
+        // --scenario=ID filter (matches composite scenarioId or the scenario portion)
+        if (scenarioArg) {
+            runtimes = runtimes.filter((r) => r.paper.scenarioId === scenarioArg || r.paper.scenarioId.endsWith(`:${scenarioArg}`));
+        }
+    }
+    else {
+        // Legacy: filter testnet scenarios from paper.yaml
+        mode = "testnet";
+        const scenarios = paperCfg.scenarios.filter((s) => {
+            if (!s.enabled)
+                return false;
+            if (scenarioArg)
+                return s.id === scenarioArg;
+            return s.exchange.testnet === true;
+        });
+        runtimes = scenarios.map((s) => buildPaperRuntime(base, paperCfg, s));
+    }
+    if (runtimes.length === 0) {
+        if (mode === "multi-account") {
+            console.error("❌ No matching live account runtimes found.");
+            console.error("   Check accounts in config/live.yaml and ensure referenced scenarios exist in paper.yaml");
+        }
+        else {
+            console.error("❌ No enabled testnet scenarios found.");
+            console.error("   Please set testnet scenario enabled to true in paper.yaml");
+            console.error("   and configure API Key in .secrets/binance-testnet.json");
+        }
+        process.exit(1);
+    }
+    log.info(`🚀 Starting live monitor [${mode}], ${runtimes.length} runtime(s)`);
+    log.info(`📋 Unified signal engine: processSignal() + MTF + sentiment gate + Kelly + event calendar + correlation filter`);
+    // ── State file consistency check ─────────────────────────────────────
+    const logsDir = path.resolve(SCRIPT_DIR, "../../logs");
+    for (const cfg of runtimes) {
+        const stateFile = path.join(logsDir, `paper-${cfg.paper.scenarioId}.json`);
+        const configInitial = cfg.paper.initial_usdt;
+        if (fs.existsSync(stateFile)) {
+            try {
+                const state = JSON.parse(fs.readFileSync(stateFile, "utf-8"));
+                const stateInitial = state.initialUsdt;
+                if (configInitial && stateInitial && Math.abs(stateInitial - configInitial) > 1) {
+                    log.warn(`⚠️  [${cfg.paper.scenarioId}] State baseline mismatch: state.initialUsdt=${stateInitial}, ` +
+                        `config initial_usdt=${configInitial}. ` +
+                        `P&L calculation will use state file value (${stateInitial}). ` +
+                        `To reset: npm run paper:reset -- --scenario ${cfg.paper.scenarioId} --set-initial ${configInitial}`);
+                }
+            }
+            catch { /* ignore corrupted state file, reconciliation flow below will handle it */ }
+        }
+    }
+    // ── Real CVD — aggTrade WebSocket ────────────────────
+    // DISABLED PERMANENTLY - CVD causes crashes on this system
+    // Will re-enable once stability is confirmed
+    const cvdManager = null;
+    log.info(`📊 Real CVD disabled (causes crashes)`);
+    // Test connection — group by credentials_path to ping once per account
+    const pingedCredentials = new Set();
+    for (const cfg of runtimes) {
+        const credKey = `${cfg.exchange.credentials_path ?? "default"}:${cfg.exchange.testnet ? "testnet" : "live"}`;
+        if (pingedCredentials.has(credKey))
+            continue;
+        pingedCredentials.add(credKey);
+        const executor = createLiveExecutor(cfg);
+        const label = cfg.exchange.testnet ? "Testnet" : "Live";
+        const ok = await executor.ping();
+        if (!ok) {
+            console.error(`❌ ${cfg.paper.scenarioId}: Binance ${label} API connection failed, please check credentials and network`);
+            process.exit(1);
+        }
+        const balance = await executor.syncBalance();
+        log.info(`✅ ${cfg.paper.scenarioId} [${label}]: Connection OK, USDT balance = $${balance.toFixed(2)}`);
+    }
+    // ── Start reconciliation (P3.3) + orphan order scan ──────────────────
+    for (const cfg of runtimes) {
+        const executor = createLiveExecutor(cfg);
+        try {
+            const account = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
+            const exchangePositions = await executor.getExchangePositions();
+            const reconcile = reconcilePositions(account, exchangePositions);
+            const report = formatReconcileReport(reconcile);
+            log.info(report.replace(/\*\*/g, ""));
+            // Auto-clean ghost positions: local has but exchange doesn't → close record at entryPrice valuation
+            const ghostSymbols = reconcile.discrepancies
+                .filter((d) => d.issue === "missing_exchange")
+                .map((d) => d.symbol);
+            if (ghostSymbols.length > 0) {
+                for (const sym of ghostSymbols) {
+                    const pos = account.positions[sym];
+                    if (!pos)
+                        continue;
+                    const closePrice = pos.entryPrice;
+                    const proceeds = pos.quantity * closePrice;
+                    const ghostTrade = {
+                        id: `reconcile_${Date.now()}_ghost`,
+                        symbol: sym,
+                        side: "sell",
+                        quantity: pos.quantity,
+                        price: closePrice,
+                        usdtAmount: proceeds,
+                        fee: 0,
+                        slippage: 0,
+                        timestamp: Date.now(),
+                        reason: "[Reconciliation auto-fix] Local position not found on exchange, removed from paper state",
+                        pnl: 0,
+                        pnlPercent: 0,
+                    };
+                    account.trades.push(ghostTrade);
+                    account.usdt += proceeds;
+                    delete account.positions[sym];
+                    saveAccount(account, cfg.paper.scenarioId);
+                    log.info(`🧹 [Reconciliation fix] Ghost position ${sym} removed from paper state (returned $${proceeds.toFixed(2)})`);
+                }
+            }
+            if (reconcile.status === "critical") {
+                console.error(`\n⛔ Reconciliation found critical discrepancies, startup paused, please confirm manually before restarting!`);
+                process.exit(1);
+            }
+        }
+        catch (err) {
+            log.warn(`⚠️ Reconciliation skipped: ${String(err)}`);
+        }
+        // ── F2/F5: Orphan order scan ─────────────────────────
+        try {
+            const cancelled = await executor.scanOpenOrders();
+            if (cancelled > 0) {
+                log.info(`🧹 ${cfg.paper.scenarioId}: Cancelled ${cancelled} orphan order(s)`);
+            }
+        }
+        catch (err) {
+            log.warn(`⚠️ Orphan order scan skipped: ${String(err)}`);
+        }
+    }
+    // ── SIGTERM / SIGINT graceful shutdown ───────────────────────
+    const handleShutdown = (sig) => {
+        if (_state.shuttingDown)
+            return;
+        _state.shuttingDown = true;
+        log.info(`\n🛑 Received ${sig}, will exit after current round completes...`);
+    };
+    process.on("SIGTERM", () => { handleShutdown("SIGTERM"); });
+    process.on("SIGINT", () => { handleShutdown("SIGINT"); });
+    // ── Persistent DataProvider (one per runtime scenarioId, reused across rounds) ──
+    const dataProviders = new Map();
+    for (const cfg of runtimes) {
+        const stale = tfStaleSec(cfg.timeframe);
+        dataProviders.set(cfg.paper.scenarioId, new DataProvider(stale));
+        log.info(`📦 ${cfg.paper.scenarioId}: DataProvider cache TTL ${stale}s (timeframe=${cfg.timeframe})`);
+    }
+    // ── Persistent LiveExecutor (one per runtime scenarioId, preserves _exitRejectionLog cooldown state) ──
+    const liveExecutors = new Map();
+    for (const cfg of runtimes) {
+        liveExecutors.set(cfg.paper.scenarioId, createLiveExecutor(cfg));
+    }
+    // Polling loop
+    for (;;) {
+        if (_state.shuttingDown)
+            break;
+        // Watchdog heartbeat: trigger once per round, watchdog can monitor live-monitor alive status
+        ping("live_monitor")();
+        // P6.7: BTC crash detection
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-deprecated
+            const btcKlines = await getKlines("BTCUSDT", "1m", 2);
+            const latestBtcPrice = btcKlines[btcKlines.length - 1]?.close;
+            if (latestBtcPrice && latestBtcPrice > 0) {
+                btcPriceBuffer.push(latestBtcPrice);
+                if (btcPriceBuffer.length > MAX_BTC_PRICE_BUFFER) {
+                    btcPriceBuffer.shift();
+                }
+                if (!isKillSwitchActive() && btcPriceBuffer.length >= 10) {
+                    const { crash, dropPct } = checkBtcCrash(btcPriceBuffer, BTC_CRASH_THRESHOLD_PCT);
+                    if (crash) {
+                        const reason = `BTC recent drop ${dropPct.toFixed(2)}% exceeds threshold ${BTC_CRASH_THRESHOLD_PCT}%`;
+                        log.warn(`⛔ Auto-triggered Kill Switch: ${reason}`);
+                        activateKillSwitch(reason);
+                        notifyError("KILL_SWITCH", new Error(`⛔ Kill Switch auto-activated: ${reason}`));
+                    }
+                }
+            }
+        }
+        catch (e) {
+            log.warn(`BTC crash detection failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+        // P6.2 On-chain stablecoin signal refresh (hourly, silently skip on failure)
+        await refreshStablecoinSignal().catch(() => { });
+        for (const cfg of runtimes) {
+            if (_state.shuttingDown)
+                break; // eslint-disable-line @typescript-eslint/no-unnecessary-condition
+            // P6.7: Kill Switch check
+            if (isKillSwitchActive()) {
+                log.warn(`⛔ Kill Switch activated, skipping scenario ${cfg.paper.scenarioId}`);
+                continue;
+            }
+            // ── P6.2 Dynamic pairlist: override static symbols from config if valid ──
+            const account = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
+            const heldSymbols = Object.keys(account.positions);
+            const pairlistSymbols = loadPairlistSymbols(heldSymbols);
+            if (pairlistSymbols)
+                cfg.symbols = pairlistSymbols;
+            // ── DataProvider: reuse persistent instance, only re-fetch after staleSec expires ──
+            const macdMinBars = cfg.strategy.macd.enabled
+                ? cfg.strategy.macd.slow + cfg.strategy.macd.signal + 1
+                : 0;
+            const klineLimit = Math.max(cfg.strategy.ma.long, cfg.strategy.rsi.period, macdMinBars) + 11;
+            const provider = dataProviders.get(cfg.paper.scenarioId) ?? new DataProvider(tfStaleSec(cfg.timeframe));
+            await provider.refresh(cfg.symbols, cfg.timeframe, klineLimit);
+            // MTF pre-fetch
+            if (cfg.trend_timeframe && cfg.trend_timeframe !== cfg.timeframe) {
+                const trendLimit = cfg.strategy.ma.long + 10;
+                await provider.refresh(cfg.symbols, cfg.trend_timeframe, trendLimit);
+            }
+            // ── Total loss protection (max_total_loss_percent) ──
+            let totalLossBreached = false;
+            if (cfg.risk.max_total_loss_percent > 0) {
+                const priceMap = {};
+                for (const sym of cfg.symbols) {
+                    const kl = provider.get(sym, cfg.timeframe);
+                    const last = kl?.at(-1);
+                    if (last)
+                        priceMap[sym] = last.close;
+                }
+                const posWeightsForLoss = buildPositionWeights(account, priceMap);
+                const currentEquity = account.usdt + posWeightsForLoss.reduce((s, pw) => s + pw.notionalUsdt, 0);
+                const lossPct = ((account.initialUsdt - currentEquity) / account.initialUsdt) * 100;
+                if (lossPct >= cfg.risk.max_total_loss_percent) {
+                    totalLossBreached = true;
+                    log.warn(`⛔ [${cfg.paper.scenarioId}] Total loss ${lossPct.toFixed(2)}% exceeds limit ${cfg.risk.max_total_loss_percent}%, pausing new entries (exits still executed)`);
+                    const lastNotify = _totalLossNotifyAt.get(cfg.paper.scenarioId) ?? 0;
+                    if (Date.now() - lastNotify >= TOTAL_LOSS_NOTIFY_COOLDOWN_MS) {
+                        notifyError(cfg.paper.scenarioId, new Error(`⛔ Total loss ${lossPct.toFixed(2)}% exceeds ${cfg.risk.max_total_loss_percent}% limit, new entries auto-paused`));
+                        _totalLossNotifyAt.set(cfg.paper.scenarioId, Date.now());
+                    }
+                }
+            }
+            try {
+                // Check stop loss/take profit first
+                await checkExits(cfg, liveExecutors.get(cfg.paper.scenarioId));
+                // P7.1 Portfolio exposure summary log
+                try {
+                    const accForExp = loadAccount(cfg.paper.initial_usdt, cfg.paper.scenarioId);
+                    const priceMap = {};
+                    for (const sym of cfg.symbols) {
+                        const kl = provider.get(sym, cfg.timeframe);
+                        const last = kl?.at(-1);
+                        if (last)
+                            priceMap[sym] = last.close;
+                    }
+                    const posWeights = buildPositionWeights(accForExp, priceMap);
+                    const totalEquity = accForExp.usdt + posWeights.reduce((s, pw) => s + pw.notionalUsdt, 0);
+                    if (Object.keys(accForExp.positions).length > 0) {
+                        const klinesBySymbol = {};
+                        for (const sym of cfg.symbols) {
+                            const kl = provider.get(sym, cfg.timeframe);
+                            if (kl)
+                                klinesBySymbol[sym] = kl;
+                        }
+                        const exposure = calcPortfolioExposure(posWeights, totalEquity, klinesBySymbol);
+                        log.info(`[${cfg.paper.scenarioId}] ${formatPortfolioExposure(exposure).replace(/\*\*/g, "")}`);
+                    }
+                    recordEquitySnapshot(cfg.paper.scenarioId, totalEquity, Object.keys(accForExp.positions).length);
+                    // ── v0.8 Portfolio rebalancing ─────────────────────────────
+                    if (cfg.rebalance?.enabled) {
+                        try {
+                            const rebalanceStatePath = path.resolve(SCRIPT_DIR, `../../logs/rebalance-state-${cfg.paper.scenarioId}.json`);
+                            let lastRebalanceAt = 0;
+                            try {
+                                const rs = JSON.parse(fs.readFileSync(rebalanceStatePath, "utf-8"));
+                                lastRebalanceAt = rs.lastRebalanceAt ?? 0;
+                            }
+                            catch { /* first run */ }
+                            if (shouldRebalance(cfg.rebalance, lastRebalanceAt)) {
+                                const posNotionals = {};
+                                for (const [sym, pos] of Object.entries(accForExp.positions)) {
+                                    posNotionals[sym] = pos.quantity * (priceMap[sym] ?? pos.entryPrice);
+                                }
+                                const result = computeRebalanceOrders(cfg.rebalance, posNotionals, priceMap, totalEquity);
+                                if (result.rebalanceNeeded) {
+                                    log.info(`[${cfg.paper.scenarioId}] Rebalance: ${result.reason}`);
+                                    const executor = liveExecutors.get(cfg.paper.scenarioId) ?? createLiveExecutor(cfg);
+                                    for (const order of result.orders) {
+                                        log.info(`[${cfg.paper.scenarioId}] Rebalance ${order.action.toUpperCase()} ${order.symbol}: $${order.amountUsdt.toFixed(2)} (${(order.currentWeight * 100).toFixed(1)}% → ${(order.targetWeight * 100).toFixed(1)}%)`);
+                                        try {
+                                            if (order.action === "buy") {
+                                                const signal = {
+                                                    symbol: order.symbol, type: "buy", price: priceMap[order.symbol] ?? 0,
+                                                    indicators: { maShort: 0, maLong: 0, rsi: 50, price: priceMap[order.symbol] ?? 0, volume: 0, avgVolume: 0 },
+                                                    reason: [`rebalance: underweight by ${(Math.abs(order.deviation) * 100).toFixed(1)}%`],
+                                                    timestamp: Date.now(),
+                                                };
+                                                await executor.handleBuy(signal);
+                                            }
+                                            else {
+                                                await executor.handleSell(order.symbol, priceMap[order.symbol] ?? 0, `rebalance: overweight by ${(order.deviation * 100).toFixed(1)}%`);
+                                            }
+                                        }
+                                        catch (e) {
+                                            log.warn(`[${cfg.paper.scenarioId}] Rebalance order failed: ${e instanceof Error ? e.message : String(e)}`);
+                                        }
+                                    }
+                                    fs.mkdirSync(path.dirname(rebalanceStatePath), { recursive: true });
+                                    fs.writeFileSync(rebalanceStatePath, JSON.stringify({ lastRebalanceAt: Date.now() }));
+                                }
+                            }
+                        }
+                        catch (e) {
+                            log.warn(`[${cfg.paper.scenarioId}] Rebalance check failed: ${e instanceof Error ? e.message : String(e)}`);
+                        }
+                    }
+                }
+                catch { /* exposure summary failure does not affect main flow */ }
+                // Then detect buy/sell signals (skip entries when total loss exceeded)
+                if (totalLossBreached)
+                    continue;
+                for (const symbol of cfg.symbols) {
+                    if (_state.shuttingDown)
+                        break; // eslint-disable-line @typescript-eslint/no-unnecessary-condition
+                    await processSymbol(symbol, cfg, provider).catch((err) => {
+                        const msg = err instanceof Error ? err.message : String(err);
+                        log.error(`❌ ${cfg.paper.scenarioId} ${symbol}: ${msg}`);
+                        if (cfg.notify.on_error)
+                            notifyError(symbol, new Error(msg));
+                    });
+                    await new Promise((r) => setTimeout(r, 300));
+                }
+            }
+            catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                log.error(`❌ Scenario ${cfg.paper.scenarioId} runtime error: ${msg}`);
+            }
+        }
+        // Periodic stale Map cleanup (runs every loop iteration, only clears entries > 2h old)
+        cleanupStaleMaps();
+        if (_state.shuttingDown)
+            break; // eslint-disable-line @typescript-eslint/no-unnecessary-condition
+        log.info(`⏰ Waiting ${POLL_INTERVAL_MS / 1000}s before next round...`);
+        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+    }
+    cvdManager?.stop();
+    log.info("✅ Live monitor safely exited.");
+    process.exit(0);
+}
+process.on("unhandledRejection", (reason) => {
+    console.error("[FATAL] Unhandled Rejection:", reason);
+    process.exit(1);
+});
+main().catch((err) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("Fatal:", msg);
+    process.exit(1);
+});
